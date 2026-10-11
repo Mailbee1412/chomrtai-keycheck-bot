@@ -78,6 +78,7 @@ sk-xxxxxxxxxxxxxxxxxxxxxxxx
 | ตัวแปร | ความหมาย |
 | --- | --- |
 | `LINKAPI_CHANNEL_IDS` | จำกัดให้เช็คได้เฉพาะบางห้อง (คั่นด้วย `,` ปล่อยว่าง = ทุกห้อง) |
+| `LINKAPI_WELCOME_CHANNEL_ID` | ช่องสำหรับโพสต์ข้อความต้อนรับ/วิธีใช้ (โพสต์ครั้งเดียวตอนบอทออนไลน์) |
 | `LINKAPI_PRIVATE_MODE` | `thread` (ค่าเริ่มต้น) / `dm` / `off` |
 | `LINKAPI_MAX_KEYS` | จำนวนคีย์สูงสุดต่อข้อความ (ค่าเริ่มต้น 10) |
 | `LINKAPI_STRICT_ACCOUNT` | `true` = เช็คได้เฉพาะคีย์ของบัญชีที่ล็อกอิน |

@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits, Partials, Events } from 'discord.js';
 import { config, missingConfig } from './config.js';
 import { handleKeys } from './handlers/keycheck.js';
+import { postWelcome } from './handlers/welcome.js';
 
 const missing = missingConfig();
 if (missing.length > 0) {
@@ -18,9 +19,10 @@ const client = new Client({
   partials: [Partials.Channel, Partials.Message],
 });
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`✅ บอทเช็คยอดข้อความในคีย์พร้อมใช้งาน: ${c.user.tag}`);
   console.log(`   LinkAPI: ${config.linkapi.base} | โหมดตอบกลับ: ${config.linkapi.privateMode}`);
+  await postWelcome(c).catch((err) => console.warn(`[welcome] ${err.message}`));
 });
 
 client.on(Events.MessageCreate, async (message) => {

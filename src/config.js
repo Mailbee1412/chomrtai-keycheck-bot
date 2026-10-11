@@ -63,6 +63,7 @@ export const config = {
     pricingTtlMs: Number(process.env.LINKAPI_PRICING_TTL_MS) || 30 * 60 * 1000,
     privateMode: (process.env.LINKAPI_PRIVATE_MODE || 'thread').trim().toLowerCase(),
     maxKeys: Number(process.env.LINKAPI_MAX_KEYS) || 10,
+    welcomeChannelId: (process.env.LINKAPI_WELCOME_CHANNEL_ID || '').trim(),
     modelLimits: parseModelLimits(process.env.LINKAPI_MODEL_LIMITS),
     priceOverrides: parsePriceOverrides(process.env.LINKAPI_PRICE_OVERRIDES),
   },

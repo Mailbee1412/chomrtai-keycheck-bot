@@ -22,6 +22,6 @@ function run(file) {
   });
 }
 
-const exitCode = await run('linkapi.mjs');
+const exitCode = (await run('linkapi.mjs')) || (await run('welcome.mjs'));
 rmSync(dir, { recursive: true, force: true });
 process.exit(exitCode);

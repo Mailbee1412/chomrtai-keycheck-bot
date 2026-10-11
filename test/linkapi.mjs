@@ -46,7 +46,21 @@ globalThis.fetch = async (url) => {
         { model_name: 'gemini-3.1-pro-preview', quota_type: 0, model_price: 0, model_ratio: 1 },
         { model_name: '[次]gemini-3.8-flash', quota_type: 1, model_price: 0.03, model_ratio: 0 },
         { model_name: '[SP]claude-opus-4-7', quota_type: 1, model_price: 0.1, model_ratio: 0 },
-        { model_name: 'gemini-3.1-pro-preview-r', quota_type: 0, model_price: 0, model_ratio: 0.5 },
+        { model_name: 'gemini-3.1-pro-preview-r', quota_type: 0, model_price: 0, model_ratio: 0 },
+        {
+          model_name: '[次]claude-fable-5',
+          quota_type: 0,
+          model_price: 0,
+          model_ratio: 0,
+          billing_expr: 'tier("base", fixed(0.2))',
+        },
+        {
+          model_name: '[SP]claude-fable-5',
+          quota_type: 0,
+          model_price: 0,
+          model_ratio: 0,
+          billing_expr: 'tier("base", fixed(0.1))',
+        },
       ],
     });
   }
@@ -96,7 +110,7 @@ check('getKeyUsage อ่านโควตา', usage.availableRaw === 6250000 
 check('getKeyUsage อ่านรายชื่อโมเดลลิมิต', usage.modelLimits.length === 2 && usage.modelLimitsEnabled === true);
 
 const pricing = await linkapi.getPricing(true);
-check('getPricing โหลดราคาโมเดล', pricing.size === 6, `${pricing.size}`);
+check('getPricing โหลดราคาโมเดล', pricing.size === 8, `${pricing.size}`);
 check(
   'pickPrice เลือกแบบคิดราคาต่อครั้ง (exact)',
   linkapi.pickPrice('[次]gemini-3.1-pro-preview', pricing)?.modelPrice === 0.05,
@@ -118,6 +132,13 @@ check('เหลือ gemini-3.1-pro-preview = 6250000/25000', byModel['[次]ge
 check('เหลือ gemini-3.8-flash = 6250000/15000', byModel['[次]gemini-3.8-flash']?.remaining === 416);
 
 check('ไม่มี per-call -> ไม่พบราคา', linkapi.pickPrice('gemini-3.1-pro-preview-r', pricing) === null);
+
+check('อ่านราคาต่อครั้งจาก billing_expr fixed()', linkapi.pickPrice('[次]claude-fable-5', pricing)?.modelPrice === 0.2);
+check('ยังข้าม [SP] แม้มี fixed()', linkapi.pickPrice('[SP]claude-fable-5', pricing) === null);
+check(
+  'billing_expr fixed() คำนวณจำนวนคงเหลือได้',
+  linkapi.computeRemainingCounts(['[次]claude-fable-5'], usage, pricing)[0]?.remaining === 62,
+);
 config.linkapi.priceOverrides = new Map([['gemini-3.1-pro-preview-r', 0.05]]);
 check(
   'override ราคาต่อครั้งเอง ได้ผล',

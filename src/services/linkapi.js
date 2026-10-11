@@ -36,6 +36,13 @@ export function stripModelPrefix(name) {
   return String(name || '').replace(MODEL_PREFIX_RE, '').trim();
 }
 
+// ราคาต่อครั้งบางโมเดล (รวม [次]) ไม่ได้อยู่ในฟิลด์ model_price
+// แต่ฝังอยู่ใน billing_expr เช่น tier("base", fixed(0.2))
+export function parseFixedPrice(billingExpr) {
+  const m = /fixed\(\s*([0-9.]+)\s*\)/.exec(String(billingExpr || ''));
+  return m ? Number(m[1]) : 0;
+}
+
 export function normalizeModelLimits(value) {
   let v = value;
   if (typeof v === 'string') {
@@ -104,10 +111,14 @@ export async function getPricing(force = false) {
   for (const m of list) {
     if (!m || !m.model_name) continue;
     const name = String(m.model_name);
+    const quotaType = Number(m.quota_type) || 0;
+    const declaredPrice = Number(m.model_price) || 0;
+    const fixedPrice = parseFixedPrice(m.billing_expr);
+    const modelPrice = quotaType === 1 && declaredPrice > 0 ? declaredPrice : fixedPrice;
     map.set(name, {
       name,
-      quotaType: Number(m.quota_type) || 0,
-      modelPrice: Number(m.model_price) || 0,
+      quotaType: modelPrice > 0 ? 1 : quotaType,
+      modelPrice,
       modelRatio: Number(m.model_ratio) || 0,
       completionRatio: Number(m.completion_ratio) || 0,
     });

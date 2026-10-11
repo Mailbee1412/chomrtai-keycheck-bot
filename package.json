@@ -1,0 +1,20 @@
+{
+  "name": "chomrtai-keycheck-bot",
+  "version": "1.0.0",
+  "description": "บอทดิสคอร์ดสำหรับเช็คจำนวนข้อความคงเหลือในคีย์ LinkAPI จาก Model Limits",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0"
+  }
+}

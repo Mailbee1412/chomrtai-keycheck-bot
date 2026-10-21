@@ -62,10 +62,57 @@ export const config = {
     keyCacheTtlMs: Number(process.env.LINKAPI_KEY_CACHE_TTL_MS) || 30 * 60 * 1000,
     pricingTtlMs: Number(process.env.LINKAPI_PRICING_TTL_MS) || 30 * 60 * 1000,
     privateMode: (process.env.LINKAPI_PRIVATE_MODE || 'thread').trim().toLowerCase(),
+    messageCheck: process.env.LINKAPI_MESSAGE_CHECK === 'true',
     maxKeys: Number(process.env.LINKAPI_MAX_KEYS) || 10,
     welcomeChannelId: (process.env.LINKAPI_WELCOME_CHANNEL_ID || '').trim(),
     modelLimits: parseModelLimits(process.env.LINKAPI_MODEL_LIMITS),
     priceOverrides: parsePriceOverrides(process.env.LINKAPI_PRICE_OVERRIDES),
+  },
+
+  supportForm: {
+    formChannelId: (process.env.SUPPORT_FORM_CHANNEL_ID || '').trim(),
+    targetChannelId: (process.env.SUPPORT_FORM_TARGET_CHANNEL_ID || '').trim(),
+    targetType: (process.env.SUPPORT_FORM_TARGET_TYPE || 'text').trim().toLowerCase(),
+    forumTagIds: (process.env.SUPPORT_FORM_FORUM_TAG_ID || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    buttonLabel: process.env.SUPPORT_FORM_BUTTON_LABEL || 'แจ้งปัญหา',
+    dataPath: process.env.SUPPORT_FORM_DATA_PATH
+      ? path.resolve(process.env.SUPPORT_FORM_DATA_PATH)
+      : path.join(DATA_DIR, 'support-requests.json'),
+    allowedRoleIds: (process.env.SUPPORT_FORM_ALLOWED_ROLE_IDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    notifyRoleIds: (process.env.SUPPORT_FORM_NOTIFY_ROLE_IDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    staffRoleIds: (process.env.SUPPORT_FORM_STAFF_ROLE_IDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  },
+
+  shop: {
+    channelId: (process.env.SHOP_CHANNEL_ID || '').trim(),
+    categoryId: (process.env.SHOP_CATEGORY_ID || '').trim(),
+    orderLogChannelId: (process.env.SHOP_ORDER_LOG_CHANNEL_ID || '').trim(),
+    timezone: (process.env.SHOP_TIMEZONE || 'Asia/Bangkok').trim(),
+    dailySummaryTime: (process.env.SHOP_DAILY_SUMMARY_TIME || '23:59').trim(),
+    currencySymbol: process.env.SHOP_CURRENCY_SYMBOL || '฿',
+    qrImagePath: (process.env.SHOP_QR_IMAGE_PATH || '').trim(),
+    slipVerifyProvider: (process.env.SHOP_SLIP_VERIFY_PROVIDER || 'easyslip').trim().toLowerCase(),
+    slipVerifyKey: (process.env.SHOP_SLIP_VERIFY_KEY || '').trim(),
+    slipVerifyBase: (process.env.SHOP_SLIP_VERIFY_BASE || '').trim(),
+    slipVerifyModel: (process.env.SHOP_SLIP_VERIFY_MODEL || 'gemini-2.5-flash').trim(),
+    slipMaxAgeHours: Number(process.env.SHOP_SLIP_MAX_AGE_HOURS || 24) || 0,
+    staffRoleIds: (process.env.SHOP_STAFF_ROLE_IDS || process.env.SUPPORT_FORM_STAFF_ROLE_IDS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+    mentionStaff: (process.env.SHOP_MENTION_STAFF || 'true').trim().toLowerCase() !== 'false',
   },
 };
 

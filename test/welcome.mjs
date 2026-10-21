@@ -19,18 +19,20 @@ const embed = buildWelcomeEmbed().toJSON();
 check('ยินดีต้อนรับมีชื่อบอท', embed.author?.name === config.shopName);
 check('มีอาการแมว', embed.title.includes('🐱'));
 check('บอกวิธีแปะคีย์', embed.description.includes('sk-...'));
-check('บอกผลส่งใน thread ส่วนตัว', embed.description.includes('private thread'));
+check('บอกผลเห็นเฉพาะคุณ', embed.description.includes('เห็นเฉพาะคุณ'));
 check('มี field วิธีเช็ค', embed.fields?.some((f) => f.name.includes('วิธีเช็ค')));
 
 config.linkapi.welcomeChannelId = '';
 check('ไม่ตั้งช่อง = ไม่โพสต์', (await postWelcome({ channels: { fetch: () => { throw new Error('should not fetch'); } } })) === undefined);
 
 let sendCalled = 0;
+let sentPayload = null;
 const fakeClient = {
   channels: {
     fetch: async () => ({
-      send: async () => {
+      send: async (payload) => {
         sendCalled++;
+        sentPayload = payload;
         return { id: 'mid_1' };
       },
       messages: { fetch: async () => null },
@@ -40,6 +42,10 @@ const fakeClient = {
 config.linkapi.welcomeChannelId = '1234567890';
 await postWelcome(fakeClient);
 check('โพสต์ข้อความต้อนรับครั้งแรก', sendCalled === 1);
+check(
+  'ข้อความต้อนรับมีปุ่มตรวจสอบคีย์',
+  sentPayload?.components?.[0]?.components?.[0]?.data?.custom_id === 'keycheck:open',
+);
 
 if (failed) {
   console.log(`\nมี ${failed} รายการที่ไม่ผ่าน ❌`);

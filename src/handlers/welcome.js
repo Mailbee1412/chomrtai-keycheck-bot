@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DATA_DIR, config } from '../config.js';
 import { buildWelcomeEmbed } from '../util/welcomeView.js';
+import { buildCheckKeyButton } from './keycheck.js';
 
 const FILE = path.join(DATA_DIR, 'linkapi-welcome.json');
 
@@ -32,18 +33,21 @@ export async function postWelcome(client) {
     return;
   }
 
-  const embed = buildWelcomeEmbed();
+  const thumbnail =
+    channel.guild?.iconURL?.({ size: 256 }) || client.user?.displayAvatarURL?.({ size: 256 }) || null;
+  const embed = buildWelcomeEmbed({ thumbnail });
+  const components = [buildCheckKeyButton()];
   const state = readState();
 
   if (state.messageId) {
     const existing = await channel.messages.fetch(state.messageId).catch(() => null);
     if (existing) {
-      await existing.edit({ embeds: [embed] }).catch(() => {});
+      await existing.edit({ embeds: [embed], components }).catch(() => {});
       return;
     }
   }
 
-  const sent = await channel.send({ embeds: [embed] }).catch((err) => {
+  const sent = await channel.send({ embeds: [embed], components }).catch((err) => {
     console.warn(`[welcome] โพสต์ไม่สำเร็จ: ${err.message}`);
     return null;
   });

@@ -22,6 +22,9 @@ function run(file) {
   });
 }
 
-const exitCode = (await run('linkapi.mjs')) || (await run('welcome.mjs'));
+let exitCode = 0;
+for (const file of ['linkapi.mjs', 'welcome.mjs', 'support-form.mjs', 'shop.mjs']) {
+  if ((await run(file)) !== 0) exitCode = 1;
+}
 rmSync(dir, { recursive: true, force: true });
 process.exit(exitCode);

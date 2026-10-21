@@ -5,4 +5,5 @@ export const COLORS = {
   grey: 0x95a5a6,
   pink: 0xff6b81,
   purple: 0x9b59b6,
+  blue: 0x3498db,
 };

@@ -8,7 +8,14 @@
 const { config } = await import('../src/config.js');
 const linkapi = await import('../src/services/linkapi.js');
 const keylog = await import('../src/services/keylog.js');
-const { handleKeys, extractKeys } = await import('../src/handlers/keycheck.js');
+const {
+  handleKeys,
+  extractKeys,
+  handleCheckKeyInteraction,
+  detectKeyProduct,
+  CHECK_KEY_BUTTON,
+  CHECK_KEY_MODAL,
+} = await import('../src/handlers/keycheck.js');
 const fs = await import('node:fs');
 
 let failed = 0;
@@ -96,6 +103,19 @@ check('extractKeys หาคีย์เจอ', extractKeys('แปะคีย
 check('extractKeys คีย์ซ้ำไม่นับซ้ำ', extractKeys('sk-a111111111111111 sk-a111111111111111').length === 1);
 check('extractKeys ข้อความธรรมดา', extractKeys('สวัสดีครับ').length === 0);
 check('maskKey', keylog.maskKey('sk-abc1234567890abcd') === 'sk-abc1234...abcd');
+
+check(
+  'ชนิดคีย์: Gemini Pro+Flash = Long Island',
+  detectKeyProduct(['[次]gemini-3.1-pro-preview', '[次]gemini-3.8-flash'])?.name === 'Long Island',
+);
+check('ชนิดคีย์: Gemini Flash = Margarita', detectKeyProduct(['gemini-2.5-flash'])?.name === 'Margarita');
+check(
+  'ชนิดคีย์: Claude+Gemini = Cosmo',
+  detectKeyProduct(['claude-opus-4-7', 'gemini-2.5-flash'])?.name === 'Cosmo',
+);
+check('ชนิดคีย์: Claude = Angel Shot', detectKeyProduct(['claude-sonnet-4'])?.name === 'Angel Shot');
+check('ชนิดคีย์: ไม่รู้จัก = null', detectKeyProduct(['llama-3.1-70b']) === null);
+check('ชนิดคีย์: ว่าง = null', detectKeyProduct([]) === null);
 
 check('stripModelPrefix ตัด [次]', linkapi.stripModelPrefix('[次]gemini-3.1-pro-preview') === 'gemini-3.1-pro-preview');
 check(
@@ -186,13 +206,105 @@ scenario.auth = true;
 const okMsg = mockMessage('ลอง sk-abc1234567890abcd');
 check('ส่งคีย์ปกติ ได้รับการตอบ', (await handleKeys(okMsg)) === true);
 const okEmbed = sends.at(-1)?.embeds[0]?.data;
-check('embed แสดงจำนวนข้อความคงเหลือ', okEmbed?.title?.includes('จำนวนข้อความคงเหลือ'), JSON.stringify(okEmbed?.title));
-check('embed เหลือต่อโมเดลถูกต้อง', okEmbed?.description?.includes('เหลืออีก **250** ข้อความ'), okEmbed?.description);
-check('embed แสดงจำนวนที่ใช้ไปจาก log', okEmbed?.description?.includes('ใช้ไป 2 ข้อความ'));
+check('embed แสดงหัวข้อเช็คโควต้าคีย์', okEmbed?.title?.includes('เช็คโควต้าคีย์'), JSON.stringify(okEmbed?.title));
+check('embed หัวข้อเปลี่ยนตามชนิดคีย์ (Long Island)', okEmbed?.title?.includes('Long Island'), JSON.stringify(okEmbed?.title));
+check('embed เข้าธีมร้าน (มีเส้นคั่น ✧)', okEmbed?.description?.includes('✧ ───────────── ✧'));
+check('embed สรุปภาพรวมจำนวนโมเดล', okEmbed?.description?.includes('จำนวนโมเดล : 2 โมเดล'), okEmbed?.description);
+check('embed ไม่มีบรรทัด "ข้อความคงเหลือรวม"', !okEmbed?.description?.includes('ข้อความคงเหลือรวม'));
+check('embed เหลือต่อโมเดลถูกต้อง', okEmbed?.description?.includes('**250** ข้อความ'), okEmbed?.description);
+check('embed แสดงจำนวนที่ใช้ไปจาก log', okEmbed?.description?.includes('ใช้ไป 2'));
 check('embed ไม่เปิดเผยราคา/ยอดเงิน', !okEmbed?.description?.includes('$') && !okEmbed?.description?.includes('ครั้ง'));
 
 const plain = mockMessage('มีกาแฟขายไหม');
 check('ข้อความธรรมดาไม่ถูกตอบ', (await handleKeys(plain)) === false);
+
+function mockCommand(commandName) {
+  const state = { modal: null };
+  return {
+    state,
+    isChatInputCommand: () => true,
+    isButton: () => false,
+    isModalSubmit: () => false,
+    commandName,
+    showModal: async (modal) => {
+      state.modal = modal;
+      return modal;
+    },
+  };
+}
+
+function mockButton() {
+  const state = { modal: null };
+  return {
+    state,
+    isChatInputCommand: () => false,
+    isButton: () => true,
+    isModalSubmit: () => false,
+    customId: CHECK_KEY_BUTTON,
+    showModal: async (modal) => {
+      state.modal = modal;
+      return modal;
+    },
+  };
+}
+
+function mockModal(rawKey) {
+  const state = { deferred: null, edits: [], follows: [], replies: [] };
+  return {
+    state,
+    isChatInputCommand: () => false,
+    isButton: () => false,
+    isModalSubmit: () => true,
+    customId: CHECK_KEY_MODAL,
+    user: { id: '900', tag: 'buyer2#0002', username: 'buyer2', send: async () => {} },
+    fields: { getTextInputValue: () => rawKey },
+    reply: async (payload) => {
+      state.replies.push(payload);
+      return payload;
+    },
+    deferReply: async (payload) => {
+      state.deferred = payload;
+      return payload;
+    },
+    editReply: async (payload) => {
+      state.edits.push(payload);
+      return payload;
+    },
+    followUp: async (payload) => {
+      state.follows.push(payload);
+      return payload;
+    },
+  };
+}
+
+scenario.auth = true;
+const anyCmd = mockCommand('เช็คคีย์');
+check(
+  'ปิดสแลช: ไม่มีคำสั่งเช็คคีย์แล้ว (เหลือปุ่มเท่านั้น)',
+  (await handleCheckKeyInteraction(anyCmd)) === false && !anyCmd.state.modal,
+);
+
+const btn = mockButton();
+check('ปุ่ม: เปิด modal', (await handleCheckKeyInteraction(btn)) === true && !!btn.state.modal);
+
+const empty = mockModal('สวัสดีครับ');
+check('modal: ไม่มีคีย์ถูกจัดการ', (await handleCheckKeyInteraction(empty)) === true);
+check(
+  'modal: ไม่มีคีย์ ตอบ ephemeral ว่าไม่พบคีย์',
+  empty.state.replies[0]?.flags === 64 && empty.state.replies[0]?.content?.includes('ไม่พบคีย์'),
+);
+
+const ok = mockModal('คีย์ sk-abc1234567890abcd');
+check('modal: เช็คคีย์สำเร็จ', (await handleCheckKeyInteraction(ok)) === true);
+check('modal: defer แบบ ephemeral', ok.state.deferred?.flags === 64);
+check('modal: ตอบ embed เช็คโควต้าคีย์', ok.state.edits[0]?.embeds?.[0]?.data?.title?.includes('เช็คโควต้าคีย์'));
+
+const multiCmd = mockModal('sk-abc1234567890abcd sk-def0000000000000000');
+await handleCheckKeyInteraction(multiCmd);
+check(
+  'modal: หลายคีย์ ส่งผลเพิ่มแบบ ephemeral',
+  multiCmd.state.edits.length === 1 && multiCmd.state.follows.length === 1 && multiCmd.state.follows[0]?.flags === 64,
+);
 
 config.linkapi.privateMode = 'off';
 const excelFile = config.linkapi.excelPath;

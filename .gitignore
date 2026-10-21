@@ -1,8 +1,11 @@
 node_modules/
 .env
+# รูป QR รับเงินของร้าน — เป็นของจริง เก็บไว้ในเครื่องคุณเอง ไม่ขึ้น GitHub
+assets/*.png
 data/*.json
 data/*.xlsx
 data/*.tmp
+data/*.lock
 !data/.gitkeep
 *.log
 .DS_Store

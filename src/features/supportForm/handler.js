@@ -50,6 +50,8 @@ function hasAllowedRole(member) {
 
 function hasManagePermission(member) {
   if (!member) return false;
+  // discord.js ไม่ขยายสิทธิ์ Administrator ให้ครบทุกบิต ต้องเช็คเอง
+  if (member.permissions?.has(PermissionsBitField.Flags.Administrator)) return true;
   if (member.permissions?.has(PermissionsBitField.Flags.ManageMessages)) return true;
   const staff = [...(config.supportForm.staffRoleIds || []), ...(config.supportForm.notifyRoleIds || [])];
   if (staff.length && member.roles.cache.some((r) => staff.includes(r.id))) return true;

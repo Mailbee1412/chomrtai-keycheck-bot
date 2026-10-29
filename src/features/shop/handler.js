@@ -222,17 +222,21 @@ async function handleProductSelect(interaction) {
   return true;
 }
 
-// ปิดห้องได้เฉพาะทีมงาน (ไม่ให้ผู้ซื้อลบห้องเอง เพื่อกันการลบหลักฐาน/หนีการติดตาม)
-function hasClosePermission(member) {
+// ปิดห้องได้เฉพาะทีมงาน/แอดมิน (ไม่ให้ผู้ซื้อลบห้องเอง เพื่อกันการลบหลักฐาน/หนีการติดตาม)
+function hasClosePermission(interaction) {
+  const member = interaction.member;
   if (!member) return false;
-  if (member.permissions?.has(PermissionFlagsBits.ManageChannels)) return true;
+  // member.permissions ของ discord.js ไม่ขยายสิทธิ์ Administrator ให้ครบทุกบิต ต้องเช็คเอง
+  const perms = interaction.memberPermissions ?? member.permissions;
+  if (perms?.has?.(PermissionFlagsBits.Administrator)) return true;
+  if (perms?.has?.(PermissionFlagsBits.ManageChannels)) return true;
   const staff = config.shop.staffRoleIds || [];
-  return staff.length > 0 && member.roles?.cache?.some?.((r) => staff.includes(r.id));
+  return staff.length > 0 && member.roles?.cache?.some?.((r) => staff.includes(r.id)) === true;
 }
 
 async function handleCloseRoom(interaction) {
   const channel = interaction.channel;
-  if (!hasClosePermission(interaction.member)) {
+  if (!hasClosePermission(interaction)) {
     await interaction
       .reply({ content: '❌ เฉพาะทีมงานเท่านั้นที่ปิดห้องได้', flags: MessageFlags.Ephemeral })
       .catch(() => {});

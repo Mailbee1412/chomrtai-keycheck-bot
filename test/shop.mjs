@@ -93,13 +93,16 @@ function selectInteraction(customId, values) {
   return i;
 }
 
-function closeInteraction({ staff = false, manageChannels = false, failDelete = false } = {}) {
+function closeInteraction({ staff = false, manageChannels = false, administrator = false, failDelete = false } = {}) {
   const i = buttonInteraction('shop:close');
   i.channelId = 'ch-room';
   i.member = {
     id: 'u1',
     roles: { cache: { some: (fn) => (staff ? fn({ id: 'role-staff' }) : false) } },
-    permissions: { has: () => manageChannels },
+    permissions: {
+      // 8n = Administrator, 16n = ManageChannels (เหมือน PermissionFlagsBits)
+      has: (flag) => (flag === 8n ? administrator : flag === 16n ? manageChannels : false),
+    },
   };
   i.channel = {
     id: 'ch-room',
@@ -295,6 +298,18 @@ check('ลบห้องเมื่อปิด', calls.some((c) => c[0] === '
 check('แจ้งผลปิดห้อง', calls.some((c) => c[0] === 'editReply' && /ปิดห้อง/.test(JSON.stringify(c[1]))));
 check('มาร์กออเดอร์ว่าปิดแล้ว', store.listOrders({ openOnly: true }).length === 0);
 
+// ---------- close room: แอดมิน (มีสิทธิ์ Administrator อย่างเดียว) ต้องปิดได้ ----------
+calls.length = 0;
+check(
+  'แอดมิน (Administrator) ปิดห้องได้',
+  (await handleShopInteraction(closeInteraction({ administrator: true }))) === true,
+);
+check(
+  'แอดมิน (Administrator) → ลบห้องจริง',
+  calls.some((c) => c[0] === 'channelDelete' && c[1] === 'ch-room'),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+
 // ---------- close room: ลบห้องไม่สำเร็จ ต้องแจ้งความจริง ไม่ใช่ขึ้นว่าสำเร็จ ----------
 calls.length = 0;
 check('ลบห้องไม่สำเร็จ → จัดการจบ', (await handleShopInteraction(closeInteraction({ staff: true, failDelete: true }))) === true);
@@ -468,13 +483,13 @@ const { handlePriceCommand, priceCommandJSON, PRICE_COMMAND_NAME } = await impor
 
 check('คำสั่งตั้งราคาถูกสร้างจากสินค้า', priceCommandJSON()?.name === PRICE_COMMAND_NAME, String(priceCommandJSON()?.name));
 
-function priceInteraction({ staff = false, product = null, price = null } = {}) {
+function priceInteraction({ staff = false, administrator = false, product = null, price = null } = {}) {
   return {
     isChatInputCommand: () => true,
     commandName: PRICE_COMMAND_NAME,
     member: {
       roles: { cache: { some: () => staff } },
-      permissions: { has: () => false },
+      permissions: { has: (flag) => (flag === 8n ? administrator : false) },
     },
     options: { getString: () => product, getNumber: () => price },
     reply: mkReply('reply'),
@@ -493,6 +508,14 @@ check('ตั้งราคา: ตอบแบบ ephemeral', calls.some((c) =
 calls.length = 0;
 await handlePriceCommand(priceInteraction({ staff: true }));
 check('ตั้งราคา: ไม่ใส่อะไร = ดูราคาทั้งหมด', calls.some((c) => c[0] === 'reply' && /ราคาบริการ/.test(JSON.stringify(c[1]))));
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ administrator: true }));
+check(
+  'ตั้งราคา: แอดมิน (Administrator) ใช้ได้',
+  calls.some((c) => c[0] === 'reply' && /ราคาบริการ/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
 
 // ---------- เทียบยอดสลิปกับ (ราคา ÷ ต่อกี่หน่วย × จำนวน) ----------
 store.addOrder({

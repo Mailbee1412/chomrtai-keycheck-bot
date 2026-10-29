@@ -240,8 +240,14 @@ async function handleCloseRoom(interaction) {
   }
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral }).catch(() => {});
-  const order = getOrder(channel?.id);
-  markOrderClosed(channel?.id);
+
+  // interaction.channel อาจเป็น null ถ้าห้องไม่ได้อยู่ใน cache — ดึงจาก id แทน
+  const room =
+    channel ?? (await interaction.client.channels.fetch(interaction.channelId).catch(() => null));
+  const roomId = room?.id ?? interaction.channelId;
+
+  const order = getOrder(roomId);
+  markOrderClosed(roomId);
 
   const logId = config.shop.orderLogChannelId;
   if (logId && order) {
@@ -253,8 +259,27 @@ async function handleCloseRoom(interaction) {
     }
   }
 
+  // ลบห้องก่อน แล้วค่อยแจ้งผล (ถ้าลบไม่สำเร็จต้องบอกจริง ๆ ไม่ใช่ขึ้นว่าสำเร็จ)
+  if (!room?.delete) {
+    console.warn(`[shop] close: ไม่พบห้อง ${roomId} สำหรับลบ`);
+    await interaction
+      .editReply({ content: '⚠️ ปิดออเดอร์แล้ว แต่ลบห้องไม่สำเร็จ (ไม่พบห้อง) — กรุณาลบห้องเอง' })
+      .catch(() => {});
+    return true;
+  }
+
+  try {
+    await room.delete('ปิดห้องออเดอร์');
+  } catch (err) {
+    console.warn(`[shop] delete room failed: ${err.message}`);
+    await interaction
+      .editReply({ content: `⚠️ ปิดออเดอร์แล้ว แต่ลบห้องไม่สำเร็จ (${err.message}) — กรุณาลบห้องเอง` })
+      .catch(() => {});
+    return true;
+  }
+
+  // ลบสำเร็จ: ห้องหายไปแล้ว ข้อความยืนยันจะหายตามห้อง (ตั้งใจ)
   await interaction.editReply({ content: '✅ ปิดห้องและลบห้องเรียบร้อย' }).catch(() => {});
-  await channel?.delete?.('ปิดห้องออเดอร์').catch((err) => console.warn(`[shop] delete room failed: ${err.message}`));
   return true;
 }
 

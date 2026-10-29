@@ -93,8 +93,9 @@ function selectInteraction(customId, values) {
   return i;
 }
 
-function closeInteraction({ staff = false, manageChannels = false } = {}) {
+function closeInteraction({ staff = false, manageChannels = false, failDelete = false } = {}) {
   const i = buttonInteraction('shop:close');
+  i.channelId = 'ch-room';
   i.member = {
     id: 'u1',
     roles: { cache: { some: (fn) => (staff ? fn({ id: 'role-staff' }) : false) } },
@@ -109,7 +110,10 @@ function closeInteraction({ staff = false, manageChannels = false } = {}) {
         ['role-staff', { id: 'role-staff', type: 0 }],
       ]),
     },
-    delete: async (reason) => calls.push(['channelDelete', 'ch-room', reason]),
+    delete: async (reason) => {
+      if (failDelete) throw new Error('Missing Permissions');
+      calls.push(['channelDelete', 'ch-room', reason]);
+    },
   };
   return i;
 }
@@ -290,6 +294,27 @@ check('แจ้งยอดจากสลิปครบ (ผู้ซื้�
 check('ลบห้องเมื่อปิด', calls.some((c) => c[0] === 'channelDelete' && c[1] === 'ch-room'), JSON.stringify(calls.map((c) => c[0])));
 check('แจ้งผลปิดห้อง', calls.some((c) => c[0] === 'editReply' && /ปิดห้อง/.test(JSON.stringify(c[1]))));
 check('มาร์กออเดอร์ว่าปิดแล้ว', store.listOrders({ openOnly: true }).length === 0);
+
+// ---------- close room: ลบห้องไม่สำเร็จ ต้องแจ้งความจริง ไม่ใช่ขึ้นว่าสำเร็จ ----------
+calls.length = 0;
+check('ลบห้องไม่สำเร็จ → จัดการจบ', (await handleShopInteraction(closeInteraction({ staff: true, failDelete: true }))) === true);
+check(
+  'ลบห้องไม่สำเร็จ → ไม่ขึ้นว่าสำเร็จ',
+  !calls.some((c) => c[0] === 'editReply' && /✅/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check(
+  'ลบห้องไม่สำเร็จ → แจ้งเหตุผลให้ผู้ใช้',
+  calls.some((c) => c[0] === 'editReply' && /ไม่สำเร็จ/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+
+// ---------- close room: interaction.channel เป็น null (หลุด cache) ต้องยังลบได้ ----------
+const nullChannel = closeInteraction({ staff: true });
+nullChannel.channel = null;
+calls.length = 0;
+check('channel null → ปิดห้องได้', (await handleShopInteraction(nullChannel)) === true);
+check('channel null → ลบห้องผ่าน fetch', calls.some((c) => c[0] === 'channelDelete' && c[1] === 'ch-room'), JSON.stringify(calls.map((c) => c[0])));
 
 // ---------- embeds ----------
 const content = buildServiceRoomContent(store.getProduct('theme'), { id: 'u1' });

@@ -222,18 +222,8 @@ async function handleProductSelect(interaction) {
   return true;
 }
 
-// หา id ผู้ซื้อจาก permission overwrite ชนิด member (ที่ไม่ใช่บอท)
-function findBuyerId(channel, botId) {
-  const cache = channel?.permissionOverwrites?.cache;
-  if (!cache) return null;
-  for (const o of cache.values()) {
-    if (o.type === 1 && o.id !== botId) return o.id;
-  }
-  return null;
-}
-
-function hasClosePermission(member, buyerId) {
-  if (buyerId && member?.id === buyerId) return true;
+// ปิดห้องได้เฉพาะทีมงาน (ไม่ให้ผู้ซื้อลบห้องเอง เพื่อกันการลบหลักฐาน/หนีการติดตาม)
+function hasClosePermission(member) {
   if (!member) return false;
   if (member.permissions?.has(PermissionFlagsBits.ManageChannels)) return true;
   const staff = config.shop.staffRoleIds || [];
@@ -242,10 +232,9 @@ function hasClosePermission(member, buyerId) {
 
 async function handleCloseRoom(interaction) {
   const channel = interaction.channel;
-  const buyerId = findBuyerId(channel, interaction.client.user?.id);
-  if (!hasClosePermission(interaction.member, buyerId)) {
+  if (!hasClosePermission(interaction.member)) {
     await interaction
-      .reply({ content: '❌ เฉพาะทีมงานหรือผู้ซื้อเท่านั้นที่ปิดห้องได้', flags: MessageFlags.Ephemeral })
+      .reply({ content: '❌ เฉพาะทีมงานเท่านั้นที่ปิดห้องได้', flags: MessageFlags.Ephemeral })
       .catch(() => {});
     return true;
   }

@@ -93,8 +93,13 @@ function selectInteraction(customId, values) {
   return i;
 }
 
-function closeInteraction() {
+function closeInteraction({ staff = false, manageChannels = false } = {}) {
   const i = buttonInteraction('shop:close');
+  i.member = {
+    id: 'u1',
+    roles: { cache: { some: (fn) => (staff ? fn({ id: 'role-staff' }) : false) } },
+    permissions: { has: () => manageChannels },
+  };
   i.channel = {
     id: 'ch-room',
     permissionOverwrites: {
@@ -264,8 +269,20 @@ await handleShopInteraction(selectInteraction('shop:product', ['not-exist']));
 check('บริการที่ไม่มีจริงถูกปฏิเสธ', calls.some((c) => c[0] === 'reply' && /ไม่พบบริการ/.test(JSON.stringify(c[1]))));
 
 // ---------- close room ----------
+// ---------- close room: ผู้ซื้อกดปิดไม่ได้ (เฉพาะทีมงาน) ----------
 calls.length = 0;
-check('กดปุ่มปิดห้อง สำเร็จ', (await handleShopInteraction(closeInteraction())) === true);
+check('ผู้ซื้อกดปิดห้อง → ถูกปฏิเสธ', (await handleShopInteraction(closeInteraction())) === true);
+check('ผู้ซื้อกดปิดห้อง → ไม่ลบห้อง', !calls.some((c) => c[0] === 'channelDelete'), JSON.stringify(calls.map((c) => c[0])));
+check(
+  'ผู้ซื้อกดปิดห้อง → แจ้งเฉพาะทีมงาน',
+  calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64 && /ทีมงาน/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ผู้ซื้อกดปิดห้อง → ออเดอร์ยังเปิดอยู่', store.listOrders({ openOnly: true }).length === 1);
+
+// ---------- close room: ทีมงานปิดได้ ----------
+calls.length = 0;
+check('ทีมงานกดปุ่มปิดห้อง สำเร็จ', (await handleShopInteraction(closeInteraction({ staff: true }))) === true);
 const closeLog = calls.find((c) => c[0] === 'logSend');
 const closeLogContent = closeLog?.[1]?.content || '';
 check('แจ้งยอดไปช่อง log ตอนปิดห้อง', Boolean(closeLog) && /ปิดออเดอร์/.test(closeLogContent), JSON.stringify(calls.map((c) => c[0])));

@@ -43,7 +43,7 @@ export function buildRoomButtons({ withSlip = true } = {}) {
     );
   }
   row.addComponents(
-    new ButtonBuilder().setCustomId(SHOP_CLOSE_BTN).setLabel('ปิดห้อง').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(SHOP_CLOSE_BTN).setLabel('ปิดห้อง (ทีมงาน)').setStyle(ButtonStyle.Danger),
   );
   return row;
 }

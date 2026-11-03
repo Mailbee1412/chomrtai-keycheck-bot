@@ -237,7 +237,7 @@ check('สร้างช่องออเดอร์ส่วนตัว', B
 check('ช่องออเดอร์อยู่ในหมวดที่กำหนด', roomCreate?.[1]?.parent === 'cat-shop', String(roomCreate?.[1]?.parent));
 check(
   'ชื่อห้อง = order-<ลำดับ 4 หลัก>-<ชื่อย่อสินค้า>-<ผู้ใช้>',
-  roomCreate?.[1]?.name === 'order-1001-long-island-tester',
+  roomCreate?.[1]?.name === 'order-0001-long-island-tester',
   String(roomCreate?.[1]?.name),
 );
 const overwrites = roomCreate?.[1]?.permissionOverwrites || [];

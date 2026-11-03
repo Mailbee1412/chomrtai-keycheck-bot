@@ -7,8 +7,8 @@ const ORDERS_FILE = path.join(DATA_DIR, 'shop-room-orders.json');
 const SLIPS_FILE = path.join(DATA_DIR, 'shop-used-slips.json');
 const COUNTER_FILE = path.join(DATA_DIR, 'shop-counter.json');
 
-// เลขลำดับออเดอร์เริ่มที่ 1000 (ตัวแรกที่ออกคือ 1001)
-const ORDER_NUMBER_START = 1000;
+// เลขลำดับออเดอร์เริ่มที่ 0 (ตัวแรกที่ออกคือ 0001)
+const ORDER_NUMBER_START = 0;
 
 const DEFAULT_PRODUCTS = [
   {

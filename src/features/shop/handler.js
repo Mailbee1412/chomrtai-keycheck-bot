@@ -16,6 +16,7 @@ import {
   findUsedSlip,
   addUsedSlip,
   dayKey,
+  nextOrderNumber,
 } from './store.js';
 import {
   buildCatalogEmbed,
@@ -62,15 +63,42 @@ function buildStaffMention() {
   return (config.shop.staffRoleIds || []).map((id) => `<@&${id}>`).join(' ');
 }
 
-function buildChannelName(product, user) {
-  const base = `order-${product.id}-${user.username || user.id}`;
+// ชื่อย่อของสินค้า ใช้ในชื่อห้อง (อ่านง่ายกว่า id เต็ม)
+const SHORT_PRODUCT_IDS = {
+  'api-key-long-island': 'long-island',
+  'api-key-margarita': 'margarita',
+  'api-key-angel-shot': 'angel-shot',
+  'api-key-cosmo': 'cosmo',
+  'api-key': 'api-key',
+};
+
+function shortProductId(product) {
+  const id = String(product?.id || '');
+  return SHORT_PRODUCT_IDS[id] || id;
+}
+
+function channelPart(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// ชื่อห้อง: order-<เลขลำดับ 4 หลัก>-<ชื่อย่อสินค้า>-<ผู้ใช้>
+function buildChannelName(product, user, seq) {
+  const orderNo = String(Math.max(0, Number(seq) || 0)).padStart(4, '0');
+  const productPart = channelPart(shortProductId(product));
+  const userPart = channelPart(user?.username) || String(user?.id || '');
+  const base = `order-${orderNo}${productPart ? `-${productPart}` : ''}-${userPart}`;
   const safe = base
     .toLowerCase()
     .replace(/[^a-z0-9\-]/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .slice(0, 100);
-  return safe || `order-${user.id}`;
+    .slice(0, 100)
+    .replace(/-$/, '');
+  return safe || `order-${orderNo}-${user?.id}`;
 }
 
 const ROOM_ALLOW = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
@@ -143,9 +171,10 @@ async function createServiceRoom(interaction, product) {
     overwrites.push({ id: roleId, allow: ROOM_ALLOW });
   }
 
+  const orderNo = nextOrderNumber();
   const channel = await guild.channels
     .create({
-      name: buildChannelName(product, interaction.user),
+      name: buildChannelName(product, interaction.user, orderNo),
       type: ChannelType.GuildText,
       parent: parentId || undefined,
       permissionOverwrites: overwrites,
@@ -170,6 +199,7 @@ async function createServiceRoom(interaction, product) {
 
   addOrder({
     roomId: channel.id,
+    orderNo,
     userId: interaction.user.id,
     userName: interaction.user.username || null,
     productId: product.id,

@@ -235,6 +235,11 @@ check('เลือกบริการไม่ทับแผง (ไม่ u
 const roomCreate = calls.find((c) => c[0] === 'channelCreate');
 check('สร้างช่องออเดอร์ส่วนตัว', Boolean(roomCreate) && roomCreate[1].type === 0, JSON.stringify(roomCreate?.[1]?.type));
 check('ช่องออเดอร์อยู่ในหมวดที่กำหนด', roomCreate?.[1]?.parent === 'cat-shop', String(roomCreate?.[1]?.parent));
+check(
+  'ชื่อห้อง = order-<ลำดับ 4 หลัก>-<ชื่อย่อสินค้า>-<ผู้ใช้>',
+  roomCreate?.[1]?.name === 'order-1001-long-island-tester',
+  String(roomCreate?.[1]?.name),
+);
 const overwrites = roomCreate?.[1]?.permissionOverwrites || [];
 const everyoneOw = overwrites.find((o) => o.id === 'role-everyone');
 const buyerOw = overwrites.find((o) => o.id === 'u1');
@@ -472,10 +477,19 @@ await handleShopInteraction(selectInteraction('shop:product', ['theme']));
 const qrSend = calls.find((c) => c[0] === 'roomSend');
 check('ห้องออเดอร์แนบรูป QR ร้าน', (qrSend?.[1]?.files?.length || 0) === 1, JSON.stringify(calls.map((c) => c[0])));
 check('ข้อความห้องบอกให้สแกน QR', /สแกน QR/.test(qrSend?.[1]?.content || ''), (qrSend?.[1]?.content || '').slice(0, 120));
+const qrRoom = calls.find((c) => c[0] === 'channelCreate');
+const qrRoomName = qrRoom?.[1]?.name;
+check('ชื่อห้อง theme ใช้ชื่อย่อสินค้า', /^order-\d{4}-theme-tester$/.test(qrRoomName || ''), String(qrRoomName));
 calls.length = 0;
 await handleShopInteraction(selectInteraction('shop:product', ['inquiry']));
 const inqSend = calls.find((c) => c[0] === 'roomSend');
 check('ห้องสอบถามไม่แนบ QR', (inqSend?.[1]?.files?.length || 0) === 0);
+const inqRoom = calls.find((c) => c[0] === 'channelCreate');
+check(
+  'ชื่อห้อง inquiry ใช้ชื่อย่อสินค้า',
+  /^order-\d{4}-inquiry-tester$/.test(inqRoom?.[1]?.name || ''),
+  String(inqRoom?.[1]?.name),
+);
 config.shop.qrImagePath = '';
 
 // ---------- ราคาต่อหน่วย (ตั้งผ่าน Discord) + เทียบยอดสลิป ----------
@@ -678,6 +692,12 @@ calls.length = 0;
 await handleShopInteraction(selectInteraction('shop:product', ['theme']));
 const quietSend = calls.find((c) => c[0] === 'roomSend');
 check('โหมดไม่แท็ก: ห้องออเดอร์ไม่แท็กทีมงาน', !(quietSend?.[1]?.content || '').includes('<@&role-staff>'), (quietSend?.[1]?.content || '').slice(0, 40));
+const themeRoom = calls.find((c) => c[0] === 'channelCreate');
+check(
+  'ห้องถัดไปได้ลำดับใหม่ + ชื่อย่อสินค้า theme',
+  /^order-\d{4}-theme-tester$/.test(themeRoom?.[1]?.name || '') && themeRoom?.[1]?.name !== qrRoomName,
+  String(themeRoom?.[1]?.name),
+);
 config.shop.mentionStaff = true;
 
 console.log(failed === 0 ? '\nผ่านทั้งหมด ✅' : `\nมี ${failed} รายการที่ไม่ผ่าน ❌`);

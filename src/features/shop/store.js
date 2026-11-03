@@ -5,6 +5,10 @@ import { DATA_DIR, config } from '../../config.js';
 const PRODUCTS_FILE = path.join(DATA_DIR, 'shop-products.json');
 const ORDERS_FILE = path.join(DATA_DIR, 'shop-room-orders.json');
 const SLIPS_FILE = path.join(DATA_DIR, 'shop-used-slips.json');
+const COUNTER_FILE = path.join(DATA_DIR, 'shop-counter.json');
+
+// เลขลำดับออเดอร์เริ่มที่ 1000 (ตัวแรกที่ออกคือ 1001)
+const ORDER_NUMBER_START = 1000;
 
 const DEFAULT_PRODUCTS = [
   {
@@ -198,6 +202,16 @@ export function addOrder(order) {
   list.push(order);
   writeJson(ORDERS_FILE, list);
   return order;
+}
+
+// ออกเลขลำดับออเดอร์ถัดไป (เก็บถาวรใน data/shop-counter.json)
+export function nextOrderNumber() {
+  const data = readJson(COUNTER_FILE, null);
+  const last = Number(data?.order);
+  const base = Number.isFinite(last) && last >= ORDER_NUMBER_START ? last : ORDER_NUMBER_START;
+  const next = base + 1;
+  writeJson(COUNTER_FILE, { order: next });
+  return next;
 }
 
 export function listOrders({ dayKey: key = null, openOnly = false } = {}) {

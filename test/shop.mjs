@@ -180,7 +180,11 @@ const check = (n, c, e = '') => {
 const store = await import('../src/features/shop/store.js');
 const { buildProductSelect, buildRoomButtons, buildSlipModal, buildPackageOptions } = await import('../src/features/shop/ui.js');
 const { handleShopInteraction, postShopPanel, postDailySummary, msUntilNextDailyTime } = await import('../src/features/shop/handler.js');
-const { buildServiceRoomContent, buildDailySummary } = await import('../src/features/shop/embeds.js');
+const {
+  buildServiceRoomContent,
+  buildDailySummaryEmbed,
+  buildDailySummaryCsv,
+} = await import('../src/features/shop/embeds.js');
 
 // ---------- store ----------
 store.ensureSeeded();
@@ -353,6 +357,7 @@ const closeLog = calls.find((c) => c[0] === 'logSend');
 const closeLogContent = closeLog?.[1]?.content || '';
 check('แจ้งยอดไปช่อง log ตอนปิดห้อง', Boolean(closeLog) && /ปิดออเดอร์/.test(closeLogContent), JSON.stringify(calls.map((c) => c[0])));
 check('แจ้งยอดจากสลิปครบ (ผู้ซื้อ/บริการ/ยอด/คนปิด)', closeLogContent.includes('<@u1>') && closeLogContent.includes('Long Island') && closeLogContent.includes('350') && closeLogContent.includes('ปิดโดย'));
+check('แจ้งปิดออเดอร์บอกเลขที่ออเดอร์ (0001)', closeLogContent.includes('0001'), closeLogContent.slice(0, 200));
 check('ลบห้องเมื่อปิด', calls.some((c) => c[0] === 'channelDelete' && c[1] === 'ch-room'), JSON.stringify(calls.map((c) => c[0])));
 check('แจ้งผลปิดห้อง', calls.some((c) => c[0] === 'editReply' && /ปิดห้อง/.test(JSON.stringify(c[1]))));
 check('มาร์กออเดอร์ว่าปิดแล้ว', store.listOrders({ openOnly: true }).length === 0);
@@ -467,22 +472,54 @@ const orderBtns = JSON.stringify(buildRoomButtons().toJSON());
 check('ปุ่มห้องออเดอร์มีแนบสลิป+ปิดห้อง', orderBtns.includes('shop:slip') && orderBtns.includes('shop:close'));
 
 // ---------- สรุปยอดรายได้รายวัน ----------
-const daily = buildDailySummary({
-  dayKey: '2026-10-14',
-  orders: [
-    { userId: 'u1', productName: '🥃 ◦ Long Island', amount: 100 },
-    { userId: 'u2', productName: '🎨 ◦ Theme', amount: 250 },
-    { userId: 'u3', productName: '🎨 ◦ Theme', amount: null },
-  ],
-});
-check('สรุปรายวันมีวันที่', daily.includes('2026-10-14'), daily.slice(0, 60));
-check('สรุปรายวันนับจำนวนออเดอร์', /3/.test(daily), daily.slice(0, 80));
-check('สรุปรายวันรวมยอดจากสลิป (350)', daily.includes('350'), daily.slice(0, 120));
-check('สรุปรายวันนับที่ยังไม่แนบสลิป', daily.includes('ยังไม่แนบสลิป'), '');
-check('สรุปรายวันแยกตามบริการ', daily.includes('Theme × 2'), daily.slice(0, 200));
-check('สรุปรายวันมีรายชื่อผู้ซื้อ', daily.includes('<@u1>') && daily.includes('<@u3>'), '');
-check('สรุปรายวันไม่เกิน 2000 ตัว', daily.length <= 2000, String(daily.length));
-check('สรุปรายวันไม่บอกว่าไม่มีออเดอร์', !buildDailySummary({ dayKey: '2026-10-14', orders: [] }).includes('350'));
+const dailyOrders = [
+  {
+    orderNo: 1,
+    userId: 'u1',
+    userName: 'tester',
+    productName: '🥃 ◦ Long Island [ Gemini Pro / Flash ]',
+    amount: 100,
+    createdAt: '2026-10-14T10:00:00Z',
+    closedAt: '2026-10-14T11:00:00Z',
+  },
+  {
+    orderNo: 2,
+    userId: 'u2',
+    userName: 'mint',
+    productName: '🎨 ◦ Theme',
+    amount: 250,
+    createdAt: '2026-10-14T12:00:00Z',
+    closedAt: null,
+  },
+  {
+    orderNo: 3,
+    userId: 'u3',
+    userName: 'nan',
+    productName: '🎨 ◦ Theme',
+    amount: null,
+    createdAt: '2026-10-14T13:00:00Z',
+    closedAt: null,
+  },
+];
+const daily = buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: dailyOrders }).toJSON();
+const dailyText = JSON.stringify(daily);
+check('สรุปรายวันมีวันที่', daily.title.includes('2026-10-14'), daily.title);
+check('สรุปรายวันนับจำนวนออเดอร์', dailyText.includes('3'), dailyText.slice(0, 120));
+check('สรุปรายวันรวมยอดจากสลิป (350)', dailyText.includes('350'), dailyText.slice(0, 200));
+check('สรุปรายวันนับที่ยังไม่แนบสลิป', dailyText.includes('ยังไม่แนบสลิป'), '');
+check('สรุปรายวันแยกตามบริการ', dailyText.includes('Theme × 2'), dailyText.slice(0, 300));
+check('สรุปรายวันมีรายชื่อผู้ซื้อ', dailyText.includes('<@u1>') && dailyText.includes('<@u3>'), '');
+check('สรุปรายวันมีเลขที่ออเดอร์', dailyText.includes('#0001') && dailyText.includes('#0003'), dailyText.slice(0, 300));
+check(
+  'สรุปรายวันไม่บอกว่าไม่มีออเดอร์',
+  !JSON.stringify(buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: [] }).toJSON()).includes('350'),
+);
+
+const dailyCsv = buildDailySummaryCsv(dailyOrders);
+check('CSV มีหัวตาราง', dailyCsv.includes('เลขที่') && dailyCsv.includes('ยอดจากสลิป'), dailyCsv.slice(0, 80));
+check('CSV มีเลขที่ออเดอร์', dailyCsv.includes('0001') && dailyCsv.includes('0003'), dailyCsv.slice(0, 160));
+check('CSV มีบริการและยอด', dailyCsv.includes('Long Island') && dailyCsv.includes('100'), '');
+check('CSV มีบรรทัดครบ (หัว + 3 ออเดอร์)', dailyCsv.split('\r\n').length === 4, String(dailyCsv.split('\r\n').length));
 
 const dA = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T10:00:00Z'));
 check('คำนวณเวลาสรุปถัดไป ~6ชม59น', dA > 6 * 3600000 && dA < 7 * 3600000, String(dA));
@@ -490,8 +527,21 @@ const dB = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T18
 check('เลยเวลาแล้วเลื่อนเป็นวันถัดไป', dB > 22 * 3600000 && dB < 23 * 3600000, String(dB));
 
 calls.length = 0;
-check('ส่งสรุปเข้าช่องแจ้งเตือนออเดอร์สำเร็จ', (await postDailySummary(client(), '2026-10-14')) === true);
+const summarySent = await postDailySummary(client(), '2026-10-14');
+const summaryPayload = calls.find((c) => c[0] === 'logSend')?.[1];
+check('ส่งสรุปเข้าช่องแจ้งเตือนออเดอร์สำเร็จ', summarySent === true);
 check('สรุปถูกส่งไปที่ช่อง log', calls.some((c) => c[0] === 'fetch' && c[1] === 'ch-log') && calls.some((c) => c[0] === 'logSend'), JSON.stringify(calls.map((c) => c[0])));
+check(
+  'สรุปส่งเป็น embed 1 อัน (อ่านง่าย ไม่รก)',
+  Array.isArray(summaryPayload?.embeds) && summaryPayload.embeds.length === 1,
+  JSON.stringify(Object.keys(summaryPayload || {})),
+);
+check(
+  'สรุปแนบไฟล์ CSV 1 ไฟล์',
+  Array.isArray(summaryPayload?.files) && summaryPayload.files.length === 1 && /^orders-2026-10-14\.csv$/.test(summaryPayload.files[0]?.name || ''),
+  JSON.stringify(summaryPayload?.files?.map((f) => f?.name)),
+);
+check('สรุปไม่มี content ยาว ๆ แล้ว', !summaryPayload?.content, String(summaryPayload?.content || ''));
 
 // ---------- อ่านสลิปอัตโนมัติ (mock ผู้ให้บริการ) ----------
 const { config } = await import('../src/config.js');

@@ -102,6 +102,7 @@ export function buildOrderClosedNotice(order, closerId) {
     DIVIDER,
     '',
     '✦ รายละเอียดออเดอร์',
+    ...(order.orderNo ? [`${BULLET}เลขที่ออเดอร์ : ${String(order.orderNo).padStart(4, '0')}`] : []),
     `${BULLET}ผู้ซื้อ : <@${order.userId}>`,
     `${BULLET}บริการ : ${order.productName || order.productId || 'ไม่ระบุ'}`,
     `${BULLET}ยอดจากสลิป : ${amount}`,
@@ -189,44 +190,90 @@ export function buildPriceMismatchNotice(args) {
 }
 
 // สรุปยอดขายรายวัน (ส่งเข้าช่องแจ้งเตือนออเดอร์อัตโนมัติ) — ยอดมาจากสลิปที่ผู้ซื้อกรอก
-export function buildDailySummary({ dayKey, orders = [] }) {
-  const lines = ['✦ สรุปยอดร้านค้า · DAILY ✦', DIVIDER, '', `✦ วันที่ : ${dayKey}`];
+function shortProductName(name) {
+  const text = String(name || 'ไม่ระบุ');
+  const withoutEmoji = text.replace(/^\S+\s*◦\s*/, '');
+  const base = withoutEmoji.split('[')[0].trim();
+  return base || text;
+}
 
+// ตัดรายการให้พอดี limit ของ embed field แล้วบอกจำนวนที่ตัดออก
+function clipLines(lines, limit = 1024) {
+  const out = [];
+  let len = 0;
+  let dropped = 0;
+  for (const line of lines) {
+    if (len + line.length + 1 > limit) {
+      dropped += 1;
+      continue;
+    }
+    out.push(line);
+    len += line.length + 1;
+  }
+  if (dropped) out.push(`◦ …และอีก ${dropped} รายการ (ดูรายละเอียดในไฟล์ CSV)`);
+  return out.join('\n');
+}
+
+export function buildDailySummaryEmbed({ dayKey, orders = [] }) {
   const paid = orders.filter((o) => o.amount != null);
   const pending = orders.length - paid.length;
   const total = paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
-  lines.push(`${BULLET}จำนวนออเดอร์ : ${orders.length}`);
-  lines.push(`${BULLET}ยอดเงินรวม (จากสลิป) : ${formatMoney(total)}`);
-  if (pending > 0) lines.push(`${BULLET}ยังไม่แนบสลิป : ${pending} ออเดอร์`);
+  const embed = new EmbedBuilder()
+    .setColor(0xefb810)
+    .setTitle(`📊 สรุปยอดร้าน · ${dayKey}`)
+    .setFooter({ text: `${config.shopName || 'ร้านค้า'} • DAILY` })
+    .setTimestamp(new Date())
+    .addFields(
+      { name: 'ยอดรวม (จากสลิป)', value: formatMoney(total), inline: true },
+      { name: 'จำนวนออเดอร์', value: `${orders.length}`, inline: true },
+      { name: 'ยังไม่แนบสลิป', value: `${pending}`, inline: true },
+    );
 
-  lines.push('', '✦ แยกตามบริการ');
-  if (orders.length) {
-    const byService = new Map();
-    for (const o of orders) {
-      const key = o.productName || o.productId || 'ไม่ระบุ';
-      const cur = byService.get(key) || { count: 0, sum: 0 };
-      cur.count += 1;
-      cur.sum += Number(o.amount) || 0;
-      byService.set(key, cur);
-    }
-    for (const [name, v] of byService) {
-      lines.push(`${BULLET}${name} × ${v.count} = ${formatMoney(v.sum)}`);
-    }
-  } else {
-    lines.push(`${BULLET}— ไม่มีออเดอร์ —`);
+  if (!orders.length) {
+    embed.addFields({ name: 'รายการออเดอร์', value: `${BULLET}— ไม่มีออเดอร์ —` });
+    return embed;
   }
 
-  lines.push('', '✦ รายชื่อผู้ซื้อ');
-  if (orders.length) {
-    for (const o of orders) {
-      const amt = o.amount == null ? 'ยังไม่แนบสลิป' : formatMoney(o.amount);
-      lines.push(`${BULLET}<@${o.userId}> — ${o.productName || o.productId || 'ไม่ระบุ'} — ${amt}`);
-    }
-  } else {
-    lines.push(`${BULLET}— ไม่มีออเดอร์ —`);
+  const byService = new Map();
+  for (const o of orders) {
+    const key = shortProductName(o.productName || o.productId);
+    const cur = byService.get(key) || { count: 0, sum: 0 };
+    cur.count += 1;
+    cur.sum += Number(o.amount) || 0;
+    byService.set(key, cur);
   }
+  const serviceLines = [...byService.entries()].map(
+    ([name, v]) => `${BULLET}${name} × ${v.count} = ${formatMoney(v.sum)}`,
+  );
+  embed.addFields({ name: 'แยกตามบริการ', value: clipLines(serviceLines) });
 
-  lines.push('', DIVIDER, 'ขอบคุณที่ใช้บริการ ♡');
-  return lines.join('\n').slice(0, 2000);
+  const orderLines = orders.map((o) => {
+    const no = o.orderNo ? `#${String(o.orderNo).padStart(4, '0')}` : '#—';
+    const mark = o.amount == null ? '🕓' : '✅';
+    const amount = o.amount == null ? 'ยังไม่แนบสลิป' : formatMoney(o.amount);
+    return `${mark} ${no} · <@${o.userId}> · ${shortProductName(o.productName || o.productId)} · ${amount}`;
+  });
+  embed.addFields({ name: 'รายการออเดอร์', value: clipLines(orderLines) });
+  return embed;
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+// ไฟล์ CSV สำหรับทำบัญชี (เปิดใน Excel ได้)
+export function buildDailySummaryCsv(orders = []) {
+  const header = ['เลขที่', 'วันที่เปิด', 'ผู้ซื้อ', 'ผู้ซื้อ(ID)', 'บริการ', 'ยอดจากสลิป', 'สถานะ'];
+  const rows = orders.map((o) => [
+    o.orderNo ? String(o.orderNo).padStart(4, '0') : '',
+    formatDateTime(o.createdAt),
+    o.userName || '',
+    o.userId || '',
+    o.productName || o.productId || '',
+    o.amount == null ? '' : Number(o.amount) || 0,
+    o.closedAt ? 'ปิดแล้ว' : 'ยังเปิด',
+  ]);
+  return [header, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
 }

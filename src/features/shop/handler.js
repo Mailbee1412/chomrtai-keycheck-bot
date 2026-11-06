@@ -25,7 +25,8 @@ import {
   buildOrderClosedNotice,
   buildSlipRecordedContent,
   buildSlipAlertNotice,
-  buildDailySummary,
+  buildDailySummaryEmbed,
+  buildDailySummaryCsv,
   formatMoney,
 } from './embeds.js';
 import {
@@ -565,9 +566,13 @@ async function sendDailySummary(client, key) {
   const log = await client.channels.fetch(logId).catch(() => null);
   if (!log?.send) return false;
   const orders = listOrders({ dayKey: key });
-  const content = buildDailySummary({ dayKey: key, orders });
+  const embed = buildDailySummaryEmbed({ dayKey: key, orders });
+  const csv = buildDailySummaryCsv(orders);
   return log
-    .send({ content })
+    .send({
+      embeds: [embed],
+      files: [new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `orders-${key}.csv` })],
+    })
     .then(() => true)
     .catch((err) => {
       console.warn(`[shop] daily summary failed: ${err.message}`);

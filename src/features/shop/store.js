@@ -332,3 +332,18 @@ export function markOrderClosed(roomId) {
   }
   return order || null;
 }
+
+// ผู้ซื้อกด "แจ้งปิดห้อง" — บันทึกเวลาไว้กันกดรัว ๆ (ไม่ปิดออเดอร์จริง)
+export function requestOrderClose(roomId, cooldownMs = 5 * 60 * 1000) {
+  const list = readOrders();
+  const order = list.find((o) => o.roomId === roomId);
+  if (!order) return { order: null, recent: false };
+
+  const now = Date.now();
+  const last = order.closeRequestedAt ? Date.parse(order.closeRequestedAt) : 0;
+  if (last && now - last < cooldownMs) return { order, recent: true };
+
+  order.closeRequestedAt = new Date(now).toISOString();
+  writeJson(ORDERS_FILE, list);
+  return { order, recent: false };
+}

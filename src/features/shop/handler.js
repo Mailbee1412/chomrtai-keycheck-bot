@@ -17,6 +17,7 @@ import {
   addUsedSlip,
   dayKey,
   nextOrderNumber,
+  requestOrderClose,
 } from './store.js';
 import {
   buildCatalogEmbed,
@@ -33,6 +34,7 @@ import {
   buildSlipModal,
   SHOP_PRODUCT_SELECT,
   SHOP_CLOSE_BTN,
+  SHOP_REQUEST_CLOSE_BTN,
   SHOP_SLIP_BTN,
   SHOP_SLIP_MODAL,
   SLIP_FIELD_IDS,
@@ -263,6 +265,55 @@ function hasClosePermission(interaction) {
   if (perms?.has?.(PermissionFlagsBits.ManageChannels)) return true;
   const staff = config.shop.staffRoleIds || [];
   return staff.length > 0 && member.roles?.cache?.some?.((r) => staff.includes(r.id)) === true;
+}
+
+// ผู้ซื้อกด "แจ้งปิดห้อง" → แจ้งทีมงานเท่านั้น ไม่ปิดห้องจริง
+async function handleRequestClose(interaction) {
+  if (hasClosePermission(interaction)) {
+    await interaction
+      .reply({ content: 'ℹ️ คุณเป็นทีมงาน — กดปุ่ม "ปิดห้อง (ทีมงาน)" เพื่อปิดห้องได้เลย', flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+    return true;
+  }
+
+  const roomId = interaction.channel?.id ?? interaction.channelId;
+  const { order, recent } = requestOrderClose(roomId);
+
+  if (recent) {
+    await interaction
+      .reply({ content: 'ℹ️ แจ้งทีมงานไปแล้ว กรุณารอสักครู่', flags: MessageFlags.Ephemeral })
+      .catch(() => {});
+    return true;
+  }
+
+  await interaction
+    .reply({ content: '✅ แจ้งทีมงานแล้ว — ทีมงานจะเข้ามาปิดห้องให้ครับ', flags: MessageFlags.Ephemeral })
+    .catch(() => {});
+
+  const mention = buildStaffMention();
+  const lines = ['🔔 ลูกค้าแจ้งว่าสามารถปิดห้องได้แล้ว', `◦ ผู้แจ้ง : <@${interaction.user.id}>`];
+  if (order?.orderNo) lines.push(`◦ เลขที่ออเดอร์ : ${String(order.orderNo).padStart(4, '0')}`);
+  if (order?.productName) lines.push(`◦ บริการ : ${order.productName}`);
+  lines.push('◦ สถานะ : รอทีมงานกด "ปิดห้อง (ทีมงาน)"');
+  const text = `${mention ? mention + '\n' : ''}${lines.join('\n')}`;
+
+  const room = interaction.channel ?? (await interaction.client.channels.fetch(roomId).catch(() => null));
+  if (room?.send) {
+    await room
+      .send({ content: text })
+      .catch((err) => console.warn(`[shop] close request failed: ${err.message}`));
+  }
+
+  const logId = config.shop.orderLogChannelId;
+  if (logId) {
+    const log = await interaction.client.channels.fetch(logId).catch(() => null);
+    if (log?.send) {
+      await log
+        .send({ content: text })
+        .catch((err) => console.warn(`[shop] close request log failed: ${err.message}`));
+    }
+  }
+  return true;
 }
 
 async function handleCloseRoom(interaction) {
@@ -571,6 +622,9 @@ export function scheduleDailySummary(client) {
 
 export async function handleShopInteraction(interaction) {
   try {
+    if (interaction.isButton() && interaction.customId === SHOP_REQUEST_CLOSE_BTN) {
+      return await handleRequestClose(interaction);
+    }
     if (interaction.isButton() && interaction.customId === SHOP_CLOSE_BTN) {
       return await handleCloseRoom(interaction);
     }

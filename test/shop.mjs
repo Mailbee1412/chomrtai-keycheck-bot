@@ -121,6 +121,24 @@ function closeInteraction({ staff = false, manageChannels = false, administrator
   return i;
 }
 
+function requestCloseInteraction({ staff = false, administrator = false, sendFails = false } = {}) {
+  const i = buttonInteraction('shop:requestClose');
+  i.channelId = 'ch-request';
+  i.member = {
+    id: 'u1',
+    roles: { cache: { some: (fn) => (staff ? fn({ id: 'role-staff' }) : false) } },
+    permissions: { has: (flag) => (flag === 8n ? administrator : false) },
+  };
+  i.channel = {
+    id: 'ch-request',
+    send: async (p) => {
+      if (sendFails) throw new Error('Missing Access');
+      calls.push(['roomSend', p]);
+    },
+  };
+  return i;
+}
+
 function slipButtonInteraction() {
   const i = buttonInteraction('shop:slip');
   i.showModal = async (m) => calls.push(['showModal', m]);
@@ -290,6 +308,7 @@ check('โพสต์แนะนำให้แนบสลิป', roomConten
 check('โพสต์บอกราคาเป็นชุดแพ็ก (ไม่มีบรรทัดเรต)', roomContent.includes('✦ ราคา') && roomContent.includes('500 ข้อความ : 245 ฿') && !roomContent.includes('/ 100 ข้อความ'), roomContent.slice(0, 90));
 check('โพสต์แท็กทีมงาน', roomContent.includes('<@&role-staff>'));
 const roomBtn = JSON.stringify(roomSend?.[1]?.components || []);
+check('ห้องมีปุ่มแจ้งปิดห้อง (ผู้ซื้อกดได้)', roomBtn.includes('shop:requestClose') && roomBtn.includes('แจ้งปิดห้อง'));
 check('ห้องมีปุ่มปิดห้อง', roomBtn.includes('shop:close') && roomBtn.includes('ปิดห้อง'));
 check('ห้องมีปุ่มแนบสลิป', roomBtn.includes('shop:slip') && roomBtn.includes('แนบสลิป'));
 check('ตอบกลับพร้อมลิงก์ห้อง', calls.some((c) => c[0] === 'editReply' && /<#ch-room>/.test(JSON.stringify(c[1]))));
@@ -370,6 +389,64 @@ nullChannel.channel = null;
 calls.length = 0;
 check('channel null → ปิดห้องได้', (await handleShopInteraction(nullChannel)) === true);
 check('channel null → ลบห้องผ่าน fetch', calls.some((c) => c[0] === 'channelDelete' && c[1] === 'ch-room'), JSON.stringify(calls.map((c) => c[0])));
+
+// ---------- ผู้ซื้อแจ้งปิดห้อง: แจ้งทีมงานเท่านั้น ไม่ปิด/ไม่ลบห้อง ----------
+store.addOrder({
+  roomId: 'ch-request',
+  orderNo: 7,
+  userId: 'u1',
+  userName: 'tester',
+  productId: 'api-key-long-island',
+  productName: '🥃 ◦ Long Island [ Gemini Pro / Flash ]',
+  unitPrice: 49,
+  pricePer: 100,
+  amount: null,
+  slipUrls: [],
+  dayKey: store.dayKey(),
+  createdAt: new Date().toISOString(),
+  closedAt: null,
+});
+
+calls.length = 0;
+check('ผู้ซื้อกดแจ้งปิดห้องได้', (await handleShopInteraction(requestCloseInteraction())) === true);
+check(
+  'แจ้งปิดห้อง → ตอบเฉพาะผู้กด',
+  calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64 && /แจ้งทีมงาน/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check(
+  'แจ้งปิดห้อง → โพสต์ในห้องพร้อมแท็กทีมงาน',
+  calls.some((c) => c[0] === 'roomSend' && /<@&role-staff>/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check(
+  'แจ้งปิดห้อง → บอกเลขที่ออเดอร์',
+  calls.some((c) => c[0] === 'roomSend' && /0007/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('แจ้งปิดห้อง → แจ้งช่อง log ด้วย', calls.some((c) => c[0] === 'logSend' && /แจ้ง/.test(c[1]?.content || '')));
+check('แจ้งปิดห้อง → ไม่ลบห้อง', !calls.some((c) => c[0] === 'channelDelete'), JSON.stringify(calls.map((c) => c[0])));
+check('แจ้งปิดห้อง → ออเดอร์ยังไม่ปิด', !store.getOrder('ch-request')?.closedAt);
+
+// กดซ้ำภายใน 5 นาที → ไม่สแปม
+calls.length = 0;
+check('แจ้งซ้ำภายใน 5 นาที → จัดการจบ', (await handleShopInteraction(requestCloseInteraction())) === true);
+check('แจ้งซ้ำ → ไม่โพสต์ซ้ำ', !calls.some((c) => c[0] === 'roomSend' || c[0] === 'logSend'), JSON.stringify(calls.map((c) => c[0])));
+check(
+  'แจ้งซ้ำ → บอกว่าแจ้งไปแล้ว',
+  calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64 && /แจ้งทีมงานไปแล้ว/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+
+// ทีมงานกดปุ่มแจ้งปิด → แนะนำให้ใช้ปุ่มปิดจริง
+calls.length = 0;
+check('ทีมงานกดแจ้งปิดห้อง → จัดการจบ', (await handleShopInteraction(requestCloseInteraction({ staff: true }))) === true);
+check(
+  'ทีมงานกดแจ้งปิด → แนะนำปุ่มปิดห้อง',
+  calls.some((c) => c[0] === 'reply' && /ปิดห้อง \(ทีมงาน\)/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ทีมงานกดแจ้งปิด → ไม่โพสต์แจ้งซ้ำ', !calls.some((c) => c[0] === 'roomSend'));
 
 // ---------- embeds ----------
 const content = buildServiceRoomContent(store.getProduct('theme'), { id: 'u1' });

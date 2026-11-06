@@ -15,6 +15,7 @@ import { formatMoney } from './embeds.js';
 const PREFIX = 'shop';
 export const SHOP_PRODUCT_SELECT = `${PREFIX}:product`;
 export const SHOP_CLOSE_BTN = `${PREFIX}:close`;
+export const SHOP_REQUEST_CLOSE_BTN = `${PREFIX}:requestClose`;
 export const SHOP_SLIP_BTN = `${PREFIX}:slip`;
 export const SHOP_SLIP_MODAL = `${PREFIX}:slipModal`;
 
@@ -43,6 +44,11 @@ export function buildRoomButtons({ withSlip = true } = {}) {
     );
   }
   row.addComponents(
+    new ButtonBuilder()
+      .setCustomId(SHOP_REQUEST_CLOSE_BTN)
+      .setLabel('แจ้งปิดห้อง')
+      .setEmoji('🔔')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(SHOP_CLOSE_BTN).setLabel('ปิดห้อง (ทีมงาน)').setStyle(ButtonStyle.Danger),
   );
   return row;

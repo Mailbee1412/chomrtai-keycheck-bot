@@ -18,7 +18,7 @@ const MIDNIGHT_KISS_PRODUCT = {
   category: 'api-key',
   type: 'key',
   description: 'คีย์ API โมเดล Gemini Flash High พร้อมใช้งาน แจ้งทีมงานหลังชำระเงินเพื่อรับคีย์',
-  price: null,
+  price: 39,
   pricePer: 100,
   enabled: true,
 };
@@ -143,6 +143,8 @@ function writeJson(file, data) {
 // สินค้าที่เพิ่มทีหลัง — เติมเข้าชุดข้อมูลเดิมครั้งเดียว (ไม่ทับของที่ร้านแก้ไว้)
 const PRODUCT_MIGRATIONS = [
   { key: '2026-11-midnight-kiss', product: MIDNIGHT_KISS_PRODUCT },
+  // ชุดข้อมูลที่เคยเติมไปก่อนตั้งราคา (price = null) → ตั้งให้เท่า Margarita
+  { key: '2026-11-midnight-kiss-price', product: MIDNIGHT_KISS_PRODUCT, priceIfEmpty: 39 },
 ];
 
 function applyProductMigrations() {
@@ -156,8 +158,12 @@ function applyProductMigrations() {
 
   let changed = false;
   for (const m of pending) {
-    if (!list.some((p) => p.id === m.product.id)) {
+    const existing = list.find((p) => p.id === m.product.id);
+    if (!existing) {
       list.push({ ...m.product });
+      changed = true;
+    } else if (m.priceIfEmpty != null && existing.price == null) {
+      existing.price = m.priceIfEmpty;
       changed = true;
     }
     applied.push(m.key);

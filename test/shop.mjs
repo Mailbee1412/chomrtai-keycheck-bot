@@ -178,6 +178,12 @@ check(
   store.getProduct('api-key-midnight-kiss')?.name === '🌙 ◦ Midnight Kiss [ Gemini Flash High ]',
   String(store.getProduct('api-key-midnight-kiss')?.name),
 );
+check(
+  'Midnight Kiss ราคาเท่า Margarita',
+  store.getProduct('api-key-midnight-kiss')?.price === store.getProduct('api-key-margarita')?.price &&
+    store.getProduct('api-key-midnight-kiss')?.price === 39,
+  String(store.getProduct('api-key-midnight-kiss')?.price),
+);
 
 // migration: ชุดข้อมูลเก่าที่ไม่มีสินค้านี้ ต้องถูกเติมให้อัตโนมัติ (ครั้งเดียว)
 const productsPath = path.join(process.env.SHOP_DATA_DIR, 'shop-products.json');
@@ -189,6 +195,19 @@ check('เติมสินค้าใหม่ให้ชุดข้อม�
 const seedCount = store.readProducts().length;
 store.ensureSeeded();
 check('migration ไม่เพิ่มซ้ำ', store.readProducts().length === seedCount, String(store.readProducts().length));
+
+// migration: ชุดข้อมูลที่เคยเติม Midnight Kiss ไปแล้วแต่ยังไม่ตั้งราคา → ตั้งให้เท่า Margarita
+fs.writeFileSync(
+  productsPath,
+  JSON.stringify(store.readProducts().map((p) => (p.id === 'api-key-midnight-kiss' ? { ...p, price: null } : p))),
+);
+fs.rmSync(migrationsPath, { force: true });
+store.ensureSeeded();
+check(
+  'migration เติมราคา Midnight Kiss = 39',
+  store.getProduct('api-key-midnight-kiss')?.price === 39,
+  String(store.getProduct('api-key-midnight-kiss')?.price),
+);
 check('มีบริการครบตามหมวด', ['theme', 'nitro-boost', 'commission-bot', 'vertex-email', 'inquiry'].every((id) => store.getProduct(id)));
 check('มีตัวเลือกสอบถามเพิ่มเติม', store.getProduct('inquiry')?.name === '💬 ◦ สอบถามเพิ่มเติม', String(store.getProduct('inquiry')?.name));
 

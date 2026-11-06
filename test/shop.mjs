@@ -184,7 +184,9 @@ const {
   buildServiceRoomContent,
   buildDailySummaryEmbed,
   buildDailySummaryCsv,
+  buildOrderListEmbeds,
 } = await import('../src/features/shop/embeds.js');
+const { buildDailySummaryXlsx } = await import('../src/features/shop/xlsx.js');
 
 // ---------- store ----------
 store.ensureSeeded();
@@ -508,12 +510,23 @@ check('สรุปรายวันนับจำนวนออเดอร�
 check('สรุปรายวันรวมยอดจากสลิป (350)', dailyText.includes('350'), dailyText.slice(0, 200));
 check('สรุปรายวันนับที่ยังไม่แนบสลิป', dailyText.includes('ยังไม่แนบสลิป'), '');
 check('สรุปรายวันแยกตามบริการ', dailyText.includes('Theme × 2'), dailyText.slice(0, 300));
-check('สรุปรายวันมีรายชื่อผู้ซื้อ', dailyText.includes('<@u1>') && dailyText.includes('<@u3>'), '');
-check('สรุปรายวันมีเลขที่ออเดอร์', dailyText.includes('#0001') && dailyText.includes('#0003'), dailyText.slice(0, 300));
+check('สรุปรายวันชี้ไปการ์ดรายการออเดอร์', dailyText.includes('ครบทั้ง 3 รายการ'), dailyText.slice(0, 300));
 check(
   'สรุปรายวันไม่บอกว่าไม่มีออเดอร์',
   !JSON.stringify(buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: [] }).toJSON()).includes('350'),
 );
+
+const dailyDetailEmbeds = buildOrderListEmbeds({ dayKey: '2026-10-14', orders: dailyOrders }).map((e) =>
+  e.toJSON(),
+);
+const dailyDetailText = JSON.stringify(dailyDetailEmbeds);
+check('การ์ดรายการมีผู้ซื้อครบ', dailyDetailText.includes('<@u1>') && dailyDetailText.includes('<@u3>'), '');
+check(
+  'การ์ดรายการมีเลขที่ออเดอร์',
+  dailyDetailText.includes('#0001') && dailyDetailText.includes('#0003'),
+  dailyDetailText.slice(0, 300),
+);
+check('การ์ดรายการแสดงครบ 3 รายการ', (dailyDetailText.match(/[✅🕓] #/g) || []).length === 3, dailyDetailText.slice(0, 300));
 
 const dailyCsv = buildDailySummaryCsv(dailyOrders);
 check('CSV มีหัวตาราง', dailyCsv.includes('เลขที่') && dailyCsv.includes('ยอดจากสลิป'), dailyCsv.slice(0, 80));
@@ -521,7 +534,25 @@ check('CSV มีเลขที่ออเดอร์', dailyCsv.includes('00
 check('CSV มีบริการและยอด', dailyCsv.includes('Long Island') && dailyCsv.includes('100'), '');
 check('CSV มีบรรทัดครบ (หัว + 3 ออเดอร์)', dailyCsv.split('\r\n').length === 4, String(dailyCsv.split('\r\n').length));
 
-// ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องไม่เกิน limit ของ embed ----------
+const dailyXlsx = await buildDailySummaryXlsx({ dayKey: '2026-10-14', orders: dailyOrders });
+check(
+  'สร้างไฟล์ Excel (.xlsx) ได้จริง',
+  Buffer.isBuffer(dailyXlsx) && dailyXlsx.length > 1000 && dailyXlsx[0] === 0x50 && dailyXlsx[1] === 0x4b,
+  `size=${dailyXlsx?.length}`,
+);
+
+const ExcelJS = (await import('exceljs')).default;
+const readWorkbook = new ExcelJS.Workbook();
+await readWorkbook.xlsx.load(dailyXlsx);
+const orderSheet = readWorkbook.getWorksheet('ออเดอร์');
+check('Excel มีชีต "ออเดอร์"', Boolean(orderSheet), readWorkbook.worksheets.map((w) => w.name).join(','));
+check('Excel มีหัวตารางเลขที่', orderSheet?.getRow(1).getCell(1).value === 'เลขที่', String(orderSheet?.getRow(1).getCell(1).value));
+check('Excel มีแถวออเดอร์ครบ 3 + แถวรวม', orderSheet?.rowCount === 5, String(orderSheet?.rowCount));
+check('Excel เลขที่ออเดอร์ถูกต้อง', orderSheet?.getRow(2).getCell(1).value === '0001', String(orderSheet?.getRow(2).getCell(1).value));
+check('Excel มียอดรวมท้ายตาราง', orderSheet?.getRow(5).getCell(5).value === 'รวม', String(orderSheet?.getRow(5).getCell(5).value));
+check('Excel มีชีต "สรุป"', Boolean(readWorkbook.getWorksheet('สรุป')));
+
+// ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({
   orderNo: i + 1,
   userId: `u${i + 1}`,
@@ -531,17 +562,27 @@ const manyOrders = Array.from({ length: 30 }, (_, i) => ({
   createdAt: '2026-10-14T10:00:00Z',
   closedAt: null,
 }));
-let manyEmbed = null;
+let manyDetailEmbeds = null;
 let manyError = null;
 try {
-  manyEmbed = buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: manyOrders }).toJSON();
+  manyDetailEmbeds = buildOrderListEmbeds({ dayKey: '2026-10-14', orders: manyOrders }).map((e) => e.toJSON());
 } catch (err) {
   manyError = err;
 }
-check('สรุป 30 ออเดอร์สร้าง embed ได้', Boolean(manyEmbed), manyError?.message || '');
-const manyOrderField = manyEmbed?.fields?.find((f) => f.name === 'รายการออเดอร์');
-check('สรุป 30 ออเดอร์: field ไม่เกิน 1024 ตัว', (manyOrderField?.value.length || 0) <= 1024, String(manyOrderField?.value.length));
-check('สรุป 30 ออเดอร์: บอกจำนวนที่ตัดออก', manyOrderField?.value.includes('และอีก'), (manyOrderField?.value || '').slice(-80));
+check('สรุป 30 ออเดอร์สร้าง embed ได้', Boolean(manyDetailEmbeds), manyError?.message || '');
+const manyDetailText = JSON.stringify(manyDetailEmbeds);
+check(
+  'สรุป 30 ออเดอร์: มีเลขที่ครบทุกออเดอร์',
+  manyOrders.every((o) => manyDetailText.includes(`#${String(o.orderNo).padStart(4, '0')}`)),
+  manyDetailText.slice(-200),
+);
+check('สรุป 30 ออเดอร์: แสดงครบ 30 บรรทัด', (manyDetailText.match(/[✅🕓] #/g) || []).length === 30, String((manyDetailText.match(/[✅🕓] #/g) || []).length));
+check('สรุป 30 ออเดอร์: ไม่มีการตัดทิ้ง', !manyDetailText.includes('และอีก'), manyDetailText.slice(-120));
+check(
+  'สรุป 30 ออเดอร์: description ไม่เกิน 4096 ตัว',
+  manyDetailEmbeds.every((e) => (e.description?.length || 0) <= 4096),
+  JSON.stringify(manyDetailEmbeds.map((e) => e.description?.length || 0)),
+);
 const manyCsv = buildDailySummaryCsv(manyOrders);
 check('CSV 30 ออเดอร์มีครบ 31 บรรทัด', manyCsv.split('\r\n').length === 31, String(manyCsv.split('\r\n').length));
 
@@ -550,19 +591,46 @@ check('คำนวณเวลาสรุปถัดไป ~6ชม59น', dA
 const dB = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T18:00:00Z'));
 check('เลยเวลาแล้วเลื่อนเป็นวันถัดไป', dB > 22 * 3600000 && dB < 23 * 3600000, String(dB));
 
+// ใส่ออเดอร์ 30 รายการของวันนั้นลง store แล้วส่งสรุปจริง
+for (const order of manyOrders) {
+  store.addOrder({ ...order, roomId: `ch-many-${order.orderNo}`, dayKey: '2026-10-14' });
+}
+
 calls.length = 0;
 const summarySent = await postDailySummary(client(), '2026-10-14');
-const summaryPayload = calls.find((c) => c[0] === 'logSend')?.[1];
+const summaryPayloads = calls.filter((c) => c[0] === 'logSend').map((c) => c[1]);
 check('ส่งสรุปเข้าช่องแจ้งเตือนออเดอร์สำเร็จ', summarySent === true);
-check('สรุปถูกส่งไปที่ช่อง log', calls.some((c) => c[0] === 'fetch' && c[1] === 'ch-log') && calls.some((c) => c[0] === 'logSend'), JSON.stringify(calls.map((c) => c[0])));
+check('สรุปถูกส่งไปที่ช่อง log', calls.some((c) => c[0] === 'fetch' && c[1] === 'ch-log') && summaryPayloads.length > 0, JSON.stringify(calls.map((c) => c[0])));
+check('สรุป 30 ออเดอร์ส่งเป็นข้อความเดียว', summaryPayloads.length === 1, String(summaryPayloads.length));
+
+const summaryPayload = summaryPayloads[0];
 check(
-  'สรุปส่งเป็น embed 1 อัน (อ่านง่าย ไม่รก)',
-  Array.isArray(summaryPayload?.embeds) && summaryPayload.embeds.length === 1,
-  JSON.stringify(Object.keys(summaryPayload || {})),
+  'ข้อความสรุปมี embed สรุป + การ์ดรายการ',
+  Array.isArray(summaryPayload?.embeds) && summaryPayload.embeds.length === 2,
+  String(summaryPayload?.embeds?.length),
 );
+const payloadEmbeds = (summaryPayload?.embeds || []).map((e) =>
+  typeof e?.toJSON === 'function' ? e.toJSON() : e,
+);
+const summaryPayloadText = JSON.stringify(payloadEmbeds);
 check(
-  'สรุปแนบไฟล์ CSV 1 ไฟล์',
-  Array.isArray(summaryPayload?.files) && summaryPayload.files.length === 1 && /^orders-2026-10-14\.csv$/.test(summaryPayload.files[0]?.name || ''),
+  'รายการออเดอร์ใน Discord มีครบ #0001-#0030',
+  summaryPayloadText.includes('#0001') && summaryPayloadText.includes('#0030'),
+  '',
+);
+check('รายการออเดอร์ใน Discord ไม่ถูกตัดทิ้ง', !summaryPayloadText.includes('และอีก'), '');
+const payloadChars = payloadEmbeds.reduce((sum, embed) => {
+  let n = (embed.title?.length || 0) + (embed.description?.length || 0) + (embed.footer?.text?.length || 0);
+  for (const field of embed.fields || []) n += (field.name?.length || 0) + (field.value?.length || 0);
+  return sum + n;
+}, 0);
+check('embed รวมกันไม่เกิน 6000 ตัว', payloadChars <= 6000 && payloadChars > 0, String(payloadChars));
+check(
+  'สรุปแนบไฟล์ Excel + CSV',
+  Array.isArray(summaryPayload?.files) &&
+    summaryPayload.files.length === 2 &&
+    /^orders-2026-10-14\.xlsx$/.test(summaryPayload.files[0]?.name || '') &&
+    /^orders-2026-10-14\.csv$/.test(summaryPayload.files[1]?.name || ''),
   JSON.stringify(summaryPayload?.files?.map((f) => f?.name)),
 );
 check('สรุปไม่มี content ยาว ๆ แล้ว', !summaryPayload?.content, String(summaryPayload?.content || ''));

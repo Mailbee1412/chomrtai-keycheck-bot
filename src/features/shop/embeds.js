@@ -80,7 +80,7 @@ export function formatMoney(amount) {
   return `${Number(amount || 0).toLocaleString('en-US')} ${config.shop.currencySymbol}`;
 }
 
-function formatDateTime(iso) {
+export function formatDateTime(iso) {
   try {
     return new Intl.DateTimeFormat('th-TH', {
       timeZone: config.shop.timezone,
@@ -244,6 +244,10 @@ export function buildDailySummaryEmbed({ dayKey, orders = [] }) {
     embed.addFields({ name: 'รายการออเดอร์', value: `${BULLET}— ไม่มีออเดอร์ —` });
     return embed;
   }
+  embed.addFields({
+    name: 'รายการออเดอร์',
+    value: `${BULLET}ครบทั้ง ${orders.length} รายการ อยู่ในการ์ดด้านล่าง (และไฟล์ CSV)`,
+  });
 
   const byService = new Map();
   for (const o of orders) {
@@ -258,14 +262,45 @@ export function buildDailySummaryEmbed({ dayKey, orders = [] }) {
   );
   embed.addFields({ name: 'แยกตามบริการ', value: clipLines(serviceLines) });
 
-  const orderLines = orders.map((o) => {
-    const no = o.orderNo ? `#${String(o.orderNo).padStart(4, '0')}` : '#—';
-    const mark = o.amount == null ? '🕓' : '✅';
-    const amount = o.amount == null ? 'ยังไม่แนบสลิป' : formatMoney(o.amount);
-    return `${mark} ${no} · <@${o.userId}> · ${shortProductName(o.productName || o.productId)} · ${amount}`;
-  });
-  embed.addFields({ name: 'รายการออเดอร์', value: clipLines(orderLines) });
   return embed;
+}
+
+// หนึ่งบรรทัดต่อหนึ่งออเดอร์ (ใช้ทั้งการ์ดรายการและเทสต์)
+export function buildOrderLine(order) {
+  const no = order.orderNo ? `#${String(order.orderNo).padStart(4, '0')}` : '#—';
+  const mark = order.amount == null ? '🕓' : '✅';
+  const amount = order.amount == null ? 'ยังไม่แนบสลิป' : formatMoney(order.amount);
+  return `${mark} ${no} · <@${order.userId}> · ${shortProductName(order.productName || order.productId)} · ${amount}`;
+}
+
+// การ์ดรายการออเดอร์ — แบ่งหลายใบเมื่อรายการยาว แต่ "ไม่ตัดทิ้ง" ทุกรายการอยู่ใน embed
+export function buildOrderListEmbeds({ dayKey, orders = [], maxChars = 3600 }) {
+  if (!orders.length) return [];
+
+  const chunks = [];
+  let current = [];
+  let length = 0;
+  for (const order of orders) {
+    const line = buildOrderLine(order);
+    if (current.length && length + line.length + 1 > maxChars) {
+      chunks.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(line);
+    length += line.length + 1;
+  }
+  if (current.length) chunks.push(current);
+
+  return chunks.map((lines, index) =>
+    new EmbedBuilder()
+      .setColor(0xefb810)
+      .setTitle(
+        `🧾 รายการออเดอร์ · ${dayKey}${chunks.length > 1 ? ` (${index + 1}/${chunks.length})` : ''}`,
+      )
+      .setDescription(lines.join('\n'))
+      .setFooter({ text: `ทั้งหมด ${orders.length} รายการ` }),
+  );
 }
 
 function csvCell(value) {

@@ -27,6 +27,7 @@ import {
   buildSlipAlertNotice,
   buildDailySummaryEmbed,
   buildDailySummaryCsv,
+  buildOrderListEmbeds,
   formatMoney,
 } from './embeds.js';
 import {
@@ -41,6 +42,7 @@ import {
   SLIP_FIELD_IDS,
 } from './ui.js';
 import { isSlipVerifyEnabled, verifySlip, fetchAttachment } from './slip.js';
+import { buildDailySummaryXlsx } from './xlsx.js';
 
 const STATE_FILE = path.join(DATA_DIR, 'shop-state.json');
 
@@ -559,25 +561,76 @@ async function handleSlipSubmit(interaction) {
   return true;
 }
 
+// นับตัวอักษรของ embed แบบคร่าว ๆ (Discord จำกัด 6,000 ตัว/ข้อความ)
+function embedCharCount(embed) {
+  const data = typeof embed?.toJSON === 'function' ? embed.toJSON() : embed || {};
+  let total = (data.title?.length || 0) + (data.description?.length || 0);
+  total += (data.footer?.text?.length || 0) + (data.author?.name?.length || 0);
+  for (const field of data.fields || []) {
+    total += (field.name?.length || 0) + (field.value?.length || 0);
+  }
+  return total;
+}
+
+// จัด embed เป็นกลุ่มต่อข้อความ (ไม่เกิน 10 ใบ และไม่เกิน 5,600 ตัวอักษร)
+function packEmbeds(embeds, { maxEmbeds = 10, maxChars = 5600 } = {}) {
+  const groups = [];
+  let current = [];
+  let length = 0;
+  for (const embed of embeds) {
+    const size = embedCharCount(embed);
+    if (current.length && (current.length >= maxEmbeds || length + size > maxChars)) {
+      groups.push(current);
+      current = [];
+      length = 0;
+    }
+    current.push(embed);
+    length += size;
+  }
+  if (current.length) groups.push(current);
+  return groups;
+}
+
 // ส่งสรุปยอดรายได้ของวันหนึ่งเข้าช่องแจ้งเตือนออเดอร์
+// การ์ดสรุป + การ์ดรายการออเดอร์ครบทุกรายการ + ไฟล์ CSV
 async function sendDailySummary(client, key) {
   const logId = config.shop.orderLogChannelId;
   if (!logId) return false;
   const log = await client.channels.fetch(logId).catch(() => null);
   if (!log?.send) return false;
+
   const orders = listOrders({ dayKey: key });
-  const embed = buildDailySummaryEmbed({ dayKey: key, orders });
+  const summary = buildDailySummaryEmbed({ dayKey: key, orders });
+  const details = buildOrderListEmbeds({ dayKey: key, orders });
+  const messages = packEmbeds([summary, ...details]);
   const csv = buildDailySummaryCsv(orders);
-  return log
-    .send({
-      embeds: [embed],
-      files: [new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `orders-${key}.csv` })],
-    })
-    .then(() => true)
-    .catch((err) => {
-      console.warn(`[shop] daily summary failed: ${err.message}`);
-      return false;
-    });
+
+  let xlsx = null;
+  try {
+    xlsx = await buildDailySummaryXlsx({ dayKey: key, orders });
+  } catch (err) {
+    console.warn(`[shop] daily summary xlsx failed: ${err.message}`);
+  }
+
+  let allSent = true;
+  for (let i = 0; i < messages.length; i += 1) {
+    const payload = { embeds: messages[i] };
+    if (i === 0) {
+      payload.files = [
+        ...(xlsx ? [new AttachmentBuilder(xlsx, { name: `orders-${key}.xlsx` })] : []),
+        new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `orders-${key}.csv` }),
+      ];
+    }
+    const sent = await log
+      .send(payload)
+      .then(() => true)
+      .catch((err) => {
+        console.warn(`[shop] daily summary failed (part ${i + 1}/${messages.length}): ${err.message}`);
+        return false;
+      });
+    if (!sent) allSent = false;
+  }
+  return allSent;
 }
 
 // ส่งสรุปยอดรายได้รายวัน (ค่าเริ่มต้น = วันนี้) — ใช้ตอนตั้งเวลา/เรียกเอง

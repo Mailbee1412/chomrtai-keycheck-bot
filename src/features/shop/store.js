@@ -6,9 +6,22 @@ const PRODUCTS_FILE = path.join(DATA_DIR, 'shop-products.json');
 const ORDERS_FILE = path.join(DATA_DIR, 'shop-room-orders.json');
 const SLIPS_FILE = path.join(DATA_DIR, 'shop-used-slips.json');
 const COUNTER_FILE = path.join(DATA_DIR, 'shop-counter.json');
+const MIGRATIONS_FILE = path.join(DATA_DIR, 'shop-migrations.json');
 
 // เลขลำดับออเดอร์เริ่มที่ 0 (ตัวแรกที่ออกคือ 0001)
 const ORDER_NUMBER_START = 0;
+
+const MIDNIGHT_KISS_PRODUCT = {
+  id: 'api-key-midnight-kiss',
+  parent: 'api-key',
+  name: '🌙 ◦ Midnight Kiss [ Gemini Flash High ]',
+  category: 'api-key',
+  type: 'key',
+  description: 'คีย์ API โมเดล Gemini Flash High พร้อมใช้งาน แจ้งทีมงานหลังชำระเงินเพื่อรับคีย์',
+  price: null,
+  pricePer: 100,
+  enabled: true,
+};
 
 const DEFAULT_PRODUCTS = [
   {
@@ -41,6 +54,7 @@ const DEFAULT_PRODUCTS = [
     pricePer: 100,
     enabled: true,
   },
+  MIDNIGHT_KISS_PRODUCT,
   {
     id: 'api-key-angel-shot',
     parent: 'api-key',
@@ -126,8 +140,35 @@ function writeJson(file, data) {
 }
 
 // ---------- สินค้า / บริการ ----------
+// สินค้าที่เพิ่มทีหลัง — เติมเข้าชุดข้อมูลเดิมครั้งเดียว (ไม่ทับของที่ร้านแก้ไว้)
+const PRODUCT_MIGRATIONS = [
+  { key: '2026-11-midnight-kiss', product: MIDNIGHT_KISS_PRODUCT },
+];
+
+function applyProductMigrations() {
+  const done = readJson(MIGRATIONS_FILE, []);
+  const applied = Array.isArray(done) ? done : [];
+  const pending = PRODUCT_MIGRATIONS.filter((m) => !applied.includes(m.key));
+  if (!pending.length) return;
+
+  const list = readJson(PRODUCTS_FILE, null);
+  if (!Array.isArray(list)) return; // ยังไม่มีไฟล์ → ensureSeeded สร้างครบให้แล้ว
+
+  let changed = false;
+  for (const m of pending) {
+    if (!list.some((p) => p.id === m.product.id)) {
+      list.push({ ...m.product });
+      changed = true;
+    }
+    applied.push(m.key);
+  }
+  if (changed) writeJson(PRODUCTS_FILE, list);
+  writeJson(MIGRATIONS_FILE, applied);
+}
+
 export function ensureSeeded() {
   if (!fs.existsSync(PRODUCTS_FILE)) writeJson(PRODUCTS_FILE, DEFAULT_PRODUCTS);
+  applyProductMigrations();
 }
 
 export function readProducts() {

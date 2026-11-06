@@ -84,6 +84,7 @@ const KEY_PRODUCT_RULES = [
   { name: 'Cosmo', emoji: '🍷', test: (f) => f.claude && f.gemini },
   { name: 'Angel Shot', emoji: '🍸', test: (f) => f.claude },
   { name: 'Long Island', emoji: '🥃', test: (f) => f.gemini && f.pro && f.flash },
+  { name: 'Midnight Kiss', emoji: '🌙', test: (f) => f.gemini && f.flash && f.high },
   { name: 'Margarita', emoji: '🍹', test: (f) => f.gemini && f.flash },
   { name: 'Long Island', emoji: '🥃', test: (f) => f.gemini },
 ];
@@ -96,6 +97,7 @@ export function detectKeyProduct(models) {
     claude: names.some((n) => /claude|opus|sonnet|haiku/.test(n)),
     pro: names.some((n) => n.includes('pro')),
     flash: names.some((n) => n.includes('flash')),
+    high: names.some((n) => n.includes('high')),
   };
   const rule = KEY_PRODUCT_RULES.find((r) => r.test(flags));
   return rule ? { name: rule.name, emoji: rule.emoji } : null;

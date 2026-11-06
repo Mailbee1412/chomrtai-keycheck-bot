@@ -67,6 +67,7 @@ function buildStaffMention() {
 const SHORT_PRODUCT_IDS = {
   'api-key-long-island': 'long-island',
   'api-key-margarita': 'margarita',
+  'api-key-midnight-kiss': 'midnight-kiss',
   'api-key-angel-shot': 'angel-shot',
   'api-key-cosmo': 'cosmo',
   'api-key': 'api-key',

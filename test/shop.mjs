@@ -168,11 +168,27 @@ const { buildServiceRoomContent, buildDailySummary } = await import('../src/feat
 store.ensureSeeded();
 const products = store.listProducts({ onlyEnabled: true });
 const topProducts = store.listTopProducts({ onlyEnabled: true });
-check('มีบริการเริ่มต้น 10 รายการ (6 หลัก + 4 ย่อย)', products.length === 10, String(products.length));
+check('มีบริการเริ่มต้น 11 รายการ (6 หลัก + 5 ย่อย)', products.length === 11, String(products.length));
 check('มีบริการระดับบนสุด 6 รายการ', topProducts.length === 6, String(topProducts.length));
 check('ดึงบริการด้วย id ได้', store.getProduct('api-key')?.name === '🔑 ◦ API Key', String(store.getProduct('api-key')?.name));
-check('Api key เป็นกลุ่มที่มี 4 ตัวเลือกย่อย', store.getChildren('api-key').length === 4, String(store.getChildren('api-key').length));
-check('ตัวเลือกย่อยอ้าง parent', ['api-key-long-island', 'api-key-margarita', 'api-key-angel-shot', 'api-key-cosmo'].every((id) => store.getProduct(id)?.parent === 'api-key'));
+check('Api key เป็นกลุ่มที่มี 5 ตัวเลือกย่อย', store.getChildren('api-key').length === 5, String(store.getChildren('api-key').length));
+check('ตัวเลือกย่อยอ้าง parent', ['api-key-long-island', 'api-key-margarita', 'api-key-midnight-kiss', 'api-key-angel-shot', 'api-key-cosmo'].every((id) => store.getProduct(id)?.parent === 'api-key'));
+check(
+  'มี Midnight Kiss (Gemini Flash High) ในหมวด API key',
+  store.getProduct('api-key-midnight-kiss')?.name === '🌙 ◦ Midnight Kiss [ Gemini Flash High ]',
+  String(store.getProduct('api-key-midnight-kiss')?.name),
+);
+
+// migration: ชุดข้อมูลเก่าที่ไม่มีสินค้านี้ ต้องถูกเติมให้อัตโนมัติ (ครั้งเดียว)
+const productsPath = path.join(process.env.SHOP_DATA_DIR, 'shop-products.json');
+const migrationsPath = path.join(process.env.SHOP_DATA_DIR, 'shop-migrations.json');
+fs.writeFileSync(productsPath, JSON.stringify(products.filter((p) => p.id !== 'api-key-midnight-kiss')));
+fs.rmSync(migrationsPath, { force: true });
+store.ensureSeeded();
+check('เติมสินค้าใหม่ให้ชุดข้อมูลเดิม (migration)', Boolean(store.getProduct('api-key-midnight-kiss')));
+const seedCount = store.readProducts().length;
+store.ensureSeeded();
+check('migration ไม่เพิ่มซ้ำ', store.readProducts().length === seedCount, String(store.readProducts().length));
 check('มีบริการครบตามหมวด', ['theme', 'nitro-boost', 'commission-bot', 'vertex-email', 'inquiry'].every((id) => store.getProduct(id)));
 check('มีตัวเลือกสอบถามเพิ่มเติม', store.getProduct('inquiry')?.name === '💬 ◦ สอบถามเพิ่มเติม', String(store.getProduct('inquiry')?.name));
 
@@ -183,7 +199,7 @@ check('เมนูหลักมี 6 ตัวเลือก', (sel.componen
 check('option อ้าง product id', sel.components[0].options[0].value === 'api-key');
 check('option ไม่บอกราคา', sel.components[0].options[0].description === undefined, String(sel.components[0].options[0].description));
 const subSel = buildProductSelect(store.getChildren('api-key'), 'เลือกประเภท').toJSON();
-check('เมนูย่อย Api key มี 4 ตัวเลือก', (subSel.components[0].options?.length || 0) === 4, String(subSel.components[0].options?.length));
+check('เมนูย่อย Api key มี 5 ตัวเลือก', (subSel.components[0].options?.length || 0) === 5, String(subSel.components[0].options?.length));
 const firstLabel = String(sel.components[0].options[0].label);
 check('ชื่อบริการใช้จุด ◦ คั่น (ไม่มีจุดนำหน้า)', firstLabel.includes(' ◦ ') && !firstLabel.startsWith('◦ '), firstLabel);
 check('ข้อย่อยบริการใช้จุด ◦ เช่นกัน', String(subSel.components[0].options[0].label).includes(' ◦ '), String(subSel.components[0].options[0].label));
@@ -225,7 +241,7 @@ check('กด Api key สำเร็จ', (await handleShopInteraction(selectIn
 const subReply = calls.find((c) => c[0] === 'reply');
 check('ขึ้นเมนูย่อยแบบ ephemeral', Boolean(subReply) && subReply[1].flags === 64, JSON.stringify(calls.map((c) => c[0])));
 const subComp = JSON.stringify(subReply?.[1]?.components || []);
-check('เมนูย่อยมี 4 ตัวเลือก', subComp.includes('api-key-long-island') && subComp.includes('api-key-cosmo'), subComp.slice(0, 80));
+check('เมนูย่อยมี 5 ตัวเลือก', subComp.includes('api-key-long-island') && subComp.includes('api-key-cosmo') && subComp.includes('api-key-midnight-kiss'), subComp.slice(0, 80));
 check('กด Api key ไม่สร้างห้องทันที', !calls.some((c) => c[0] === 'channelCreate'));
 
 // ---------- เลือกประเภทย่อย → สร้างห้อง ----------

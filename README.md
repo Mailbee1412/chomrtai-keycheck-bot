@@ -90,6 +90,7 @@ npm start
 | โมเดลในคีย์ | แสดงเป็น |
 | --- | --- |
 | Gemini Pro + Flash | 🥃 Long Island |
+| Gemini Flash (high) | 🌙 Midnight Kiss |
 | Gemini Flash | 🍹 Margarita |
 | Claude + Gemini | 🍷 Cosmo |
 | Claude | 🍸 Angel Shot |

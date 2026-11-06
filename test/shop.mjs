@@ -521,6 +521,30 @@ check('CSV มีเลขที่ออเดอร์', dailyCsv.includes('00
 check('CSV มีบริการและยอด', dailyCsv.includes('Long Island') && dailyCsv.includes('100'), '');
 check('CSV มีบรรทัดครบ (หัว + 3 ออเดอร์)', dailyCsv.split('\r\n').length === 4, String(dailyCsv.split('\r\n').length));
 
+// ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องไม่เกิน limit ของ embed ----------
+const manyOrders = Array.from({ length: 30 }, (_, i) => ({
+  orderNo: i + 1,
+  userId: `u${i + 1}`,
+  userName: `user${i + 1}`,
+  productName: i % 2 ? '🥃 ◦ Long Island [ Gemini Pro / Flash ]' : '🎨 ◦ Theme',
+  amount: i % 7 === 0 ? null : 49 + i,
+  createdAt: '2026-10-14T10:00:00Z',
+  closedAt: null,
+}));
+let manyEmbed = null;
+let manyError = null;
+try {
+  manyEmbed = buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: manyOrders }).toJSON();
+} catch (err) {
+  manyError = err;
+}
+check('สรุป 30 ออเดอร์สร้าง embed ได้', Boolean(manyEmbed), manyError?.message || '');
+const manyOrderField = manyEmbed?.fields?.find((f) => f.name === 'รายการออเดอร์');
+check('สรุป 30 ออเดอร์: field ไม่เกิน 1024 ตัว', (manyOrderField?.value.length || 0) <= 1024, String(manyOrderField?.value.length));
+check('สรุป 30 ออเดอร์: บอกจำนวนที่ตัดออก', manyOrderField?.value.includes('และอีก'), (manyOrderField?.value || '').slice(-80));
+const manyCsv = buildDailySummaryCsv(manyOrders);
+check('CSV 30 ออเดอร์มีครบ 31 บรรทัด', manyCsv.split('\r\n').length === 31, String(manyCsv.split('\r\n').length));
+
 const dA = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T10:00:00Z'));
 check('คำนวณเวลาสรุปถัดไป ~6ชม59น', dA > 6 * 3600000 && dA < 7 * 3600000, String(dA));
 const dB = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T18:00:00Z'));

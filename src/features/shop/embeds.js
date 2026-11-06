@@ -210,7 +210,17 @@ function clipLines(lines, limit = 1024) {
     out.push(line);
     len += line.length + 1;
   }
-  if (dropped) out.push(`◦ …และอีก ${dropped} รายการ (ดูรายละเอียดในไฟล์ CSV)`);
+  if (!dropped) return out.join('\n');
+
+  // ต้องเหลือที่ให้บรรทัดสรุปท้ายเสมอ ไม่งั้น field จะเกิน 1024 แล้วส่งไม่สำเร็จ
+  let tail = `◦ …และอีก ${dropped} รายการ (ดูรายละเอียดในไฟล์ CSV)`;
+  while (out.length && len + tail.length + 1 > limit) {
+    const removed = out.pop();
+    len -= removed.length + 1;
+    dropped += 1;
+    tail = `◦ …และอีก ${dropped} รายการ (ดูรายละเอียดในไฟล์ CSV)`;
+  }
+  out.push(tail);
   return out.join('\n');
 }
 

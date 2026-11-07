@@ -573,6 +573,24 @@ check(
     transfer: { transRef: 'REF001' },
   }).key === 'ok',
 );
+const slipButNoAmount = slipCheckStatus({
+  amount: null,
+  expected: 100,
+  priceMatch: null,
+  slipWarnings: [],
+  slipUrls: ['https://cdn.example/slip.png'],
+});
+check(
+  'แนบสลิปแล้วแต่อ่านยอดไม่ได้ → รอตรวจ',
+  slipButNoAmount.key === 'review' &&
+    slipButNoAmount.label === 'รอตรวจ' &&
+    slipButNoAmount.warnings.some((w) => w.includes('อ่านยอดไม่ได้')),
+  JSON.stringify(slipButNoAmount),
+);
+check(
+  'ไม่มีสลิปเลย → ยังไม่แนบสลิป',
+  slipCheckStatus({ amount: null, expected: 100, slipWarnings: [], slipUrls: [] }).key === 'pending',
+);
 
 const dailyCsv = buildDailySummaryCsv(dailyOrders);
 check('CSV มีหัวตาราง', dailyCsv.includes('เลขที่') && dailyCsv.includes('ยอดจากสลิป'), dailyCsv.slice(0, 80));

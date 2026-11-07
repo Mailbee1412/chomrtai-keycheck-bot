@@ -201,6 +201,16 @@ function shortProductName(name) {
 export function slipCheckStatus(order = {}) {
   const warnings = Array.isArray(order.slipWarnings) ? order.slipWarnings.filter(Boolean) : [];
   if (order.amount == null) {
+    const hasSlip = Array.isArray(order.slipUrls) && order.slipUrls.filter(Boolean).length > 0;
+    if (hasSlip) {
+      // แนบสลิปแล้วแต่บอทอ่านยอดไม่ได้ → ต้องให้คนตรวจ ไม่ใช่ "ยังไม่แนบสลิป"
+      return {
+        key: 'review',
+        label: 'รอตรวจ',
+        mark: '🔎',
+        warnings: [...warnings, 'แนบสลิปแล้วแต่อ่านยอดไม่ได้'],
+      };
+    }
     return { key: 'pending', label: 'ยังไม่แนบสลิป', mark: '🕓', warnings };
   }
   if (order.priceMatch === false) {

@@ -186,6 +186,7 @@ const {
   postPeriodSummary,
   weekRange,
   monthRange,
+  weekAnchorForSendDay,
   msUntilNextDailyTime,
   msUntilNextWeeklyTime,
   msUntilNextMonthlyTime,
@@ -654,6 +655,20 @@ check(
   JSON.stringify(orderSheet?.getRow(4).getCell(9).fill),
 );
 
+const weekXlsx = await buildDailySummaryXlsx({
+  dayKey: '2026-06-08',
+  orders: [dailyOrders[0]],
+  title: 'สัปดาห์ 2026-06-08 ~ 2026-06-14',
+});
+const weekWorkbook = new ExcelJS.Workbook();
+await weekWorkbook.xlsx.load(weekXlsx);
+const weekSummarySheet = weekWorkbook.getWorksheet('สรุป');
+check(
+  'Excel สรุปแสดงชื่อช่วงที่กำหนด',
+  weekSummarySheet?.getRow(1).getCell(2).value === 'สัปดาห์ 2026-06-08 ~ 2026-06-14',
+  String(weekSummarySheet?.getRow(1).getCell(2).value),
+);
+
 // ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({
   orderNo: i + 1,
@@ -881,6 +896,11 @@ check(
     weekPayload?.files?.[1]?.name === 'orders-week-2026-06-08_2026-06-14.csv',
   JSON.stringify(weekPayload?.files?.map((f) => f?.name)),
 );
+check(
+  'การ์ดรายการของสรุปรายสัปดาห์มีชื่อช่วง',
+  weekText.includes('🧾 รายการออเดอร์ · สัปดาห์ 2026-06-08 ~ 2026-06-14'),
+  weekText.slice(0, 400),
+);
 
 calls.length = 0;
 check(
@@ -899,6 +919,54 @@ check(
   'ไฟล์รายเดือนตั้งชื่อตามเดือน',
   monthPayload?.files?.[0]?.name === 'orders-2026-06.xlsx' && monthPayload?.files?.[1]?.name === 'orders-2026-06.csv',
   JSON.stringify(monthPayload?.files?.map((f) => f?.name)),
+);
+
+// ---------- listOrdersInRange: fallback createdAt เมื่อไม่มี dayKey ----------
+store.addOrder({
+  roomId: 'ch-range-legacy',
+  orderNo: 301,
+  userId: 'u4',
+  userName: 'legacy',
+  productName: '🎨 ◦ Theme',
+  amount: 50,
+  createdAt: '2026-07-15T10:00:00Z',
+  closedAt: null,
+});
+store.addOrder({
+  roomId: 'ch-range-edge',
+  orderNo: 302,
+  userId: 'u5',
+  userName: 'edge',
+  productName: '🎨 ◦ Theme',
+  amount: 60,
+  createdAt: '2026-07-31T20:00:00Z', // เวลาไทย = 1 ส.ค. 03:00 → ต้องไม่อยู่ในเดือน ก.ค.
+  closedAt: null,
+});
+const julyOrders = store.listOrdersInRange('2026-07-01', '2026-07-31');
+check(
+  'listOrdersInRange ใช้วันที่สร้างเมื่อไม่มี dayKey',
+  julyOrders.length === 1 && julyOrders[0].roomId === 'ch-range-legacy',
+  JSON.stringify(julyOrders.map((o) => o.roomId)),
+);
+check(
+  'listOrdersInRange ตัดออเดอร์ที่เวลาไทยข้ามเดือนออก',
+  !julyOrders.some((o) => o.roomId === 'ch-range-edge'),
+  JSON.stringify(julyOrders.map((o) => o.roomId)),
+);
+store.addOrder({
+  roomId: 'ch-range-bad',
+  orderNo: 303,
+  userId: 'u6',
+  userName: 'baddate',
+  productName: '🎨 ◦ Theme',
+  amount: 70,
+  createdAt: 'ไม่ใช่วันที่',
+  closedAt: null,
+});
+check('dayKey ของวันที่ผิดคืนค่าว่าง', store.dayKey(new Date('invalid')) === '', JSON.stringify(store.dayKey(new Date('invalid'))));
+check(
+  'listOrdersInRange ข้ามออเดอร์ที่วันที่เสียโดยไม่พัง',
+  store.listOrdersInRange('2026-07-01', '2026-07-31').every((o) => o.roomId !== 'ch-range-bad'),
 );
 
 calls.length = 0;
@@ -939,6 +1007,23 @@ check('ช่วงไม่ถูกต้อง → ไม่ส่งสร�
 check('อ่านวันในสัปดาห์จากชื่อได้', parseWeekday('sun') === 0 && parseWeekday('mon') === 1 && parseWeekday('SAT') === 6);
 check('อ่านวันในสัปดาห์จากตัวเลขได้', parseWeekday('0') === 0 && parseWeekday('6') === 6);
 check('วันในสัปดาห์ผิดรูปแบบใช้ค่าเริ่มต้น', parseWeekday('xyz', 0) === 0 && parseWeekday('9', 3) === 3);
+
+check(
+  'ส่งวันอาทิตย์ → สรุปสัปดาห์ที่จบวันนั้น',
+  weekAnchorForSendDay('2026-06-14') === '2026-06-14',
+  weekAnchorForSendDay('2026-06-14'),
+);
+check(
+  'ส่งวันจันทร์ → ย้อนไปวันอาทิตย์ที่เพิ่งจบ',
+  weekAnchorForSendDay('2026-06-15') === '2026-06-14' &&
+    weekRange(weekAnchorForSendDay('2026-06-15')).startKey === '2026-06-08',
+  JSON.stringify(weekRange(weekAnchorForSendDay('2026-06-15'))),
+);
+check(
+  'ส่งวันเสาร์ → ย้อนไปวันอาทิตย์ต้นสัปดาห์',
+  weekAnchorForSendDay('2026-06-20') === '2026-06-14',
+  weekAnchorForSendDay('2026-06-20'),
+);
 
 const wA = msUntilNextWeeklyTime('23:59', 'Asia/Bangkok', new Date('2026-11-05T10:00:00Z'), 0);
 check('สัปดาห์ถัดไป (พฤหัส→อาทิตย์) ~78.98 ชม.', wA > 78 * 3600000 && wA < 80 * 3600000, String(wA));

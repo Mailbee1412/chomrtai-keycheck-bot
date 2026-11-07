@@ -786,13 +786,25 @@ export function scheduleDailySummary(client) {
   if (!config.shop.orderLogChannelId) return null;
   const time = config.shop.dailySummaryTime;
   const delay = msUntilNextDailyTime(time, config.shop.timezone);
+  // จำวันที่เป้าหมายไว้ตั้งแต่ตอนตั้งเวลา กัน Timer ตื่นช้าแล้วข้ามวัน
+  const anchor = dayKey(new Date(Date.now() + delay));
   const hrs = (delay / 3600000).toFixed(2);
   console.log(`[shop] จะส่งสรุปยอดรายได้รายวันในอีก ${hrs} ชม. (${time} ${config.shop.timezone})`);
   const timer = setTimeout(async () => {
-    await postDailySummary(client).catch(() => {});
+    await postDailySummary(client, anchor).catch(() => {});
     scheduleDailySummary(client);
   }, delay);
   return timer;
+}
+
+// anchor ของสรุปรายสัปดาห์ = วันอาทิตย์ที่ปิดสัปดาห์ล่าสุด ณ วันที่ส่ง
+// ส่งวันอาทิตย์ = วันนั้นเลย / ส่งวันอื่น = ย้อนไปวันอาทิตย์ล่าสุด เพื่อให้ได้สัปดาห์ที่จบแล้วเต็มสัปดาห์
+export function weekAnchorForSendDay(sendDayKey) {
+  const date = new Date(`${sendDayKey}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return sendDayKey;
+  const dow = date.getUTCDay();
+  if (dow === 0) return sendDayKey;
+  return isoDate(new Date(date.getTime() - dow * 86400000));
 }
 
 // ตั้งเวลาสรุปรายสัปดาห์ (ค่าเริ่มต้น: อาทิตย์ 23:59 — สรุปจันทร์–อาทิตย์)
@@ -802,12 +814,13 @@ export function scheduleWeeklySummary(client) {
   if (!time || time.toLowerCase() === 'off') return null;
   const targetDow = parseWeekday(config.shop.weeklySummaryDay, 0);
   const delay = msUntilNextWeeklyTime(time, config.shop.timezone, new Date(), targetDow);
+  const anchor = weekAnchorForSendDay(dayKey(new Date(Date.now() + delay)));
   const hrs = (delay / 3600000).toFixed(2);
   console.log(
     `[shop] จะส่งสรุปยอดรายสัปดาห์ในอีก ${hrs} ชม. (วัน ${config.shop.weeklySummaryDay} ${time} ${config.shop.timezone})`,
   );
   const timer = setTimeout(async () => {
-    await postPeriodSummary(client, { period: 'week' }).catch(() => {});
+    await postPeriodSummary(client, { period: 'week', anchor }).catch(() => {});
     scheduleWeeklySummary(client);
   }, delay);
   return timer;
@@ -819,12 +832,13 @@ export function scheduleMonthlySummary(client) {
   const time = config.shop.monthlySummaryTime;
   if (!time || time.toLowerCase() === 'off') return null;
   const delay = msUntilNextMonthlyTime(time, config.shop.timezone);
+  const anchor = dayKey(new Date(Date.now() + delay));
   const hrs = (delay / 3600000).toFixed(2);
   console.log(
     `[shop] จะส่งสรุปยอดรายเดือนในอีก ${hrs} ชม. (วันสุดท้ายของเดือน ${time} ${config.shop.timezone})`,
   );
   const timer = setTimeout(async () => {
-    await postPeriodSummary(client, { period: 'month' }).catch(() => {});
+    await postPeriodSummary(client, { period: 'month', anchor }).catch(() => {});
     scheduleMonthlySummary(client);
   }, delay);
   return timer;

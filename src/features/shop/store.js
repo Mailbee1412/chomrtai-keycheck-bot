@@ -232,10 +232,12 @@ export function deleteProduct(id) {
 
 // ---------- ออเดอร์ในห้อง ----------
 export function dayKey(date = new Date()) {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return '';
   try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: config.shop.timezone }).format(date);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: config.shop.timezone }).format(value);
   } catch {
-    return new Date(date).toISOString().slice(0, 10);
+    return value.toISOString().slice(0, 10);
   }
 }
 

@@ -18,7 +18,7 @@ function paintResult(cell, key) {
 }
 
 // สร้างไฟล์ Excel (.xlsx) ของสรุปออเดอร์รายวัน — เปิดใน Excel/มือถือได้ทันที
-export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
+export async function buildDailySummaryXlsx({ dayKey, orders = [], title = null }) {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Chomrthai Bot';
   workbook.created = new Date();
@@ -95,7 +95,7 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
   // ชีตสรุปสำหรับทำบัญชี
   const summary = workbook.addWorksheet('สรุป');
   summary.columns = [{ width: 28 }, { width: 24 }];
-  summary.addRow(['สรุปยอดร้าน', dayKey]).font = { bold: true };
+  summary.addRow(['สรุปยอดร้าน', title || dayKey]).font = { bold: true };
   summary.addRow(['จำนวนออเดอร์', orders.length]);
   summary.addRow(['ยอดรวม (จากสลิป)', total]).getCell(2).numFmt = amountFormat;
   summary.addRow(['ยังไม่แนบสลิป', orders.length - paid.length]);

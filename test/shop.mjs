@@ -179,7 +179,18 @@ const check = (n, c, e = '') => {
 
 const store = await import('../src/features/shop/store.js');
 const { buildProductSelect, buildRoomButtons, buildSlipModal, buildPackageOptions } = await import('../src/features/shop/ui.js');
-const { handleShopInteraction, postShopPanel, postDailySummary, msUntilNextDailyTime } = await import('../src/features/shop/handler.js');
+const {
+  handleShopInteraction,
+  postShopPanel,
+  postDailySummary,
+  postPeriodSummary,
+  weekRange,
+  monthRange,
+  msUntilNextDailyTime,
+  msUntilNextWeeklyTime,
+  msUntilNextMonthlyTime,
+  parseWeekday,
+} = await import('../src/features/shop/handler.js');
 const {
   buildServiceRoomContent,
   buildDailySummaryEmbed,
@@ -728,11 +739,11 @@ check(
 check('สรุปไม่มี content ยาว ๆ แล้ว', !summaryPayload?.content, String(summaryPayload?.content || ''));
 
 // ---------- คำสั่ง /สรุปยอด (เช็คย้อนหลัง) ----------
-function summaryCommandInteraction({ staff = false, date = null } = {}) {
+function summaryCommandInteraction({ staff = false, date = null, period = null } = {}) {
   const i = {
     isChatInputCommand: () => true,
     commandName: SUMMARY_COMMAND_NAME,
-    options: { getString: () => date },
+    options: { getString: (name) => (name === 'ช่วง' ? period : date) },
     user: { id: 'u1' },
     member: { id: 'u1', roles: { cache: { some: () => false } } },
     memberPermissions: { has: (flag) => staff && (flag === 8n || flag === 16n) },
@@ -779,6 +790,171 @@ check(
   JSON.stringify(calls.map((c) => c[0])),
 );
 check('วันที่ผิด → ไม่ส่งสรุป', !calls.some((c) => c[0] === 'logSend'));
+
+// ---------- สรุปรายสัปดาห์ / รายเดือน ----------
+check(
+  'ช่วงสัปดาห์ของ 2026-06-10 = 8–14 มิ.ย.',
+  weekRange('2026-06-10').startKey === '2026-06-08' && weekRange('2026-06-10').endKey === '2026-06-14',
+  JSON.stringify(weekRange('2026-06-10')),
+);
+check(
+  'วันอาทิตย์อยู่ในสัปดาห์เดียวกับจันทร์ก่อนหน้า',
+  weekRange('2026-06-14').startKey === '2026-06-08' && weekRange('2026-06-14').endKey === '2026-06-14',
+);
+check(
+  'สัปดาห์ข้ามเดือนได้',
+  weekRange('2026-11-01').startKey === '2026-10-26' && weekRange('2026-11-01').endKey === '2026-11-01',
+  JSON.stringify(weekRange('2026-11-01')),
+);
+check(
+  'เดือน ก.พ. ปีอธิกสุรทิน = 29 วัน',
+  monthRange('2024-02-10').startKey === '2024-02-01' && monthRange('2024-02-10').endKey === '2024-02-29',
+  JSON.stringify(monthRange('2024-02-10')),
+);
+check(
+  'เดือน พ.ย. = 30 วัน และ ธ.ค. = 31 วัน',
+  monthRange('2026-11-05').endKey === '2026-11-30' && monthRange('2026-12-15').endKey === '2026-12-31',
+);
+
+store.addOrder({
+  roomId: 'ch-week-a',
+  orderNo: 201,
+  userId: 'u1',
+  userName: 'tester',
+  productName: '🎨 ◦ Theme',
+  amount: 100,
+  expected: 100,
+  priceMatch: true,
+  transfer: { transRef: 'W1' },
+  slipUrls: ['https://cdn.example/w1.png'],
+  dayKey: '2026-06-08',
+  createdAt: '2026-06-08T10:00:00Z',
+  closedAt: null,
+});
+store.addOrder({
+  roomId: 'ch-week-b',
+  orderNo: 202,
+  userId: 'u2',
+  userName: 'mint',
+  productName: '🎨 ◦ Theme',
+  amount: 200,
+  expected: 200,
+  priceMatch: true,
+  transfer: { transRef: 'W2' },
+  slipUrls: ['https://cdn.example/w2.png'],
+  dayKey: '2026-06-14',
+  createdAt: '2026-06-14T10:00:00Z',
+  closedAt: null,
+});
+store.addOrder({
+  roomId: 'ch-week-out',
+  orderNo: 203,
+  userId: 'u3',
+  userName: 'nan',
+  productName: '🎨 ◦ Theme',
+  amount: 300,
+  expected: 300,
+  priceMatch: true,
+  transfer: { transRef: 'W3' },
+  slipUrls: ['https://cdn.example/w3.png'],
+  dayKey: '2026-06-15',
+  createdAt: '2026-06-15T10:00:00Z',
+  closedAt: null,
+});
+
+calls.length = 0;
+check(
+  'ส่งสรุปรายสัปดาห์ได้',
+  (await postPeriodSummary(client(), { period: 'week', anchor: '2026-06-10' })) === true,
+);
+const weekPayload = calls.find((c) => c[0] === 'logSend')?.[1];
+const weekText = JSON.stringify(weekPayload?.embeds || []);
+check('สรุปรายสัปดาห์มีชื่อช่วงวันที่', weekText.includes('สัปดาห์ 2026-06-08 ~ 2026-06-14'), weekText.slice(0, 200));
+check(
+  'สรุปรายสัปดาห์นับเฉพาะออเดอร์ในสัปดาห์ (2 รายการ 300 ฿)',
+  weekText.includes('"name":"จำนวนออเดอร์","value":"2"') && weekText.includes('300'),
+  weekText.slice(0, 500),
+);
+check(
+  'ไฟล์รายสัปดาห์ตั้งชื่อตามช่วง',
+  weekPayload?.files?.[0]?.name === 'orders-week-2026-06-08_2026-06-14.xlsx' &&
+    weekPayload?.files?.[1]?.name === 'orders-week-2026-06-08_2026-06-14.csv',
+  JSON.stringify(weekPayload?.files?.map((f) => f?.name)),
+);
+
+calls.length = 0;
+check(
+  'ส่งสรุปรายเดือนได้',
+  (await postPeriodSummary(client(), { period: 'month', anchor: '2026-06-20' })) === true,
+);
+const monthPayload = calls.find((c) => c[0] === 'logSend')?.[1];
+const monthText = JSON.stringify(monthPayload?.embeds || []);
+check('สรุปรายเดือนมีชื่อเดือน', monthText.includes('เดือน 2026-06'), monthText.slice(0, 200));
+check(
+  'สรุปรายเดือนนับครบทั้งเดือน (3 รายการ 600 ฿)',
+  monthText.includes('"name":"จำนวนออเดอร์","value":"3"') && monthText.includes('600'),
+  monthText.slice(0, 500),
+);
+check(
+  'ไฟล์รายเดือนตั้งชื่อตามเดือน',
+  monthPayload?.files?.[0]?.name === 'orders-2026-06.xlsx' && monthPayload?.files?.[1]?.name === 'orders-2026-06.csv',
+  JSON.stringify(monthPayload?.files?.map((f) => f?.name)),
+);
+
+calls.length = 0;
+check(
+  'ทีมงานเรียก /สรุปยอด ช่วง:สัปดาห์ ได้',
+  (await handleSummaryCommand(summaryCommandInteraction({ staff: true, period: 'week', date: '2026-06-10' }))) === true,
+);
+check(
+  'แจ้งผลสรุปรายสัปดาห์พร้อมช่วงวันที่',
+  calls.some((c) => c[0] === 'editReply' && /สัปดาห์ 2026-06-08 ~ 2026-06-14/.test(c[1]?.content || '')),
+  JSON.stringify(calls.filter((c) => c[0] === 'editReply')),
+);
+
+calls.length = 0;
+check(
+  'ทีมงานเรียก /สรุปยอด ช่วง:เดือน ได้',
+  (await handleSummaryCommand(summaryCommandInteraction({ staff: true, period: 'month', date: '2026-06-20' }))) === true,
+);
+check(
+  'แจ้งผลสรุปรายเดือนพร้อมชื่อเดือน',
+  calls.some((c) => c[0] === 'editReply' && /เดือน 2026-06/.test(c[1]?.content || '')),
+  JSON.stringify(calls.filter((c) => c[0] === 'editReply')),
+);
+
+calls.length = 0;
+check(
+  'ช่วงไม่ถูกต้อง → จัดการจบ',
+  (await handleSummaryCommand(summaryCommandInteraction({ staff: true, period: 'year', date: '2026-06-10' }))) === true,
+);
+check(
+  'ช่วงไม่ถูกต้อง → แจ้งตัวเลือกที่ใช้ได้',
+  calls.some((c) => c[0] === 'reply' && /ช่วงไม่ถูกต้อง/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ช่วงไม่ถูกต้อง → ไม่ส่งสรุป', !calls.some((c) => c[0] === 'logSend'));
+
+// ---------- เวลาตั้งสรุปรายสัปดาห์/รายเดือน ----------
+check('อ่านวันในสัปดาห์จากชื่อได้', parseWeekday('sun') === 0 && parseWeekday('mon') === 1 && parseWeekday('SAT') === 6);
+check('อ่านวันในสัปดาห์จากตัวเลขได้', parseWeekday('0') === 0 && parseWeekday('6') === 6);
+check('วันในสัปดาห์ผิดรูปแบบใช้ค่าเริ่มต้น', parseWeekday('xyz', 0) === 0 && parseWeekday('9', 3) === 3);
+
+const wA = msUntilNextWeeklyTime('23:59', 'Asia/Bangkok', new Date('2026-11-05T10:00:00Z'), 0);
+check('สัปดาห์ถัดไป (พฤหัส→อาทิตย์) ~78.98 ชม.', wA > 78 * 3600000 && wA < 80 * 3600000, String(wA));
+const wB = msUntilNextWeeklyTime('23:59', 'Asia/Bangkok', new Date('2026-11-08T16:00:00Z'), 0);
+check('วันอาทิตย์ 23:00 → อีก 59 นาที', wB > 58 * 60000 && wB < 60 * 60000, String(wB));
+const wC = msUntilNextWeeklyTime('23:59', 'Asia/Bangkok', new Date('2026-11-08T16:59:30Z'), 0);
+check('เลยเวลาแล้ว → เลื่อนไปสัปดาห์หน้า', wC > 6 * 86400000 && wC < 7 * 86400000, String(wC));
+
+const mA = msUntilNextMonthlyTime('23:59', 'Asia/Bangkok', new Date('2026-11-05T10:00:00Z'));
+check('สิ้นเดือน พ.ย. ~25 วัน', mA > 25 * 86400000 && mA < 26 * 86400000, String(mA));
+const mB = msUntilNextMonthlyTime('23:59', 'Asia/Bangkok', new Date('2026-11-30T16:00:00Z'));
+check('วันสุดท้ายของเดือน 23:00 → อีก 59 นาที', mB > 58 * 60000 && mB < 60 * 60000, String(mB));
+const mC = msUntilNextMonthlyTime('23:59', 'Asia/Bangkok', new Date('2026-12-15T10:00:00Z'));
+check('เดือน ธ.ค. → สิ้นเดือน ธ.ค.', mC > 15 * 86400000 && mC < 17 * 86400000, String(mC));
+const mD = msUntilNextMonthlyTime('23:59', 'Asia/Bangkok', new Date('2026-12-31T16:59:30Z'));
+check('เลยสิ้นเดือน ธ.ค. → ไปสิ้นเดือน ม.ค.', mD > 30 * 86400000 && mD < 32 * 86400000, String(mD));
 
 // ---------- อ่านสลิปอัตโนมัติ (mock ผู้ให้บริการ) ----------
 const { config } = await import('../src/config.js');

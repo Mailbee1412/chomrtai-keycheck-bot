@@ -269,6 +269,14 @@ export function listOrders({ dayKey: key = null, openOnly = false } = {}) {
   });
 }
 
+// ออเดอร์ในช่วงวันที่ (YYYY-MM-DD แบบรวมหัวท้าย) — ใช้ทำสรุปรายสัปดาห์/รายเดือน
+export function listOrdersInRange(startKey, endKey) {
+  return readOrders().filter((o) => {
+    const key = o.dayKey || (o.createdAt ? dayKey(new Date(o.createdAt)) : null);
+    return key != null && key >= startKey && key <= endKey;
+  });
+}
+
 export function getOrder(roomId) {
   return readOrders().find((o) => o.roomId === roomId) || null;
 }

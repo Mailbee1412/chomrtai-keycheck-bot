@@ -10,6 +10,7 @@ import {
   getProduct,
   addOrder,
   listOrders,
+  listOrdersInRange,
   markOrderClosed,
   getOrder,
   setOrderAmount,
@@ -591,25 +592,56 @@ function packEmbeds(embeds, { maxEmbeds = 10, maxChars = 5600 } = {}) {
   return groups;
 }
 
-// ส่งสรุปยอดรายได้ของวันหนึ่งเข้าช่องแจ้งเตือนออเดอร์
-// การ์ดสรุป + การ์ดรายการออเดอร์ครบทุกรายการ + ไฟล์ CSV
-async function sendDailySummary(client, key) {
+// ---------- ช่วงเวลาของสรุป (วัน / สัปดาห์ / เดือน) ----------
+
+function isoDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+// ช่วงสัปดาห์ของวันที่กำหนด (จันทร์–อาทิตย์)
+export function weekRange(anchorKey) {
+  const date = new Date(`${anchorKey}T00:00:00Z`);
+  const diffToMonday = (date.getUTCDay() + 6) % 7;
+  const start = new Date(date.getTime() - diffToMonday * 86400000);
+  const end = new Date(start.getTime() + 6 * 86400000);
+  return { startKey: isoDate(start), endKey: isoDate(end) };
+}
+
+// ช่วงเดือนของวันที่กำหนด (วันที่ 1 – วันสุดท้ายของเดือน)
+export function monthRange(anchorKey) {
+  const [year, month] = anchorKey.split('-').map((v) => parseInt(v, 10));
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const mm = String(month).padStart(2, '0');
+  return {
+    startKey: `${year}-${mm}-01`,
+    endKey: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
+// ส่งสรุปยอดของช่วง [startKey, endKey] เข้าช่องแจ้งเตือนออเดอร์
+// การ์ดสรุป + การ์ดรายการออเดอร์ครบทุกรายการ + ไฟล์ Excel + CSV
+async function sendSummary(client, { startKey, endKey, label, footerTag, fileBase }) {
   const logId = config.shop.orderLogChannelId;
   if (!logId) return false;
   const log = await client.channels.fetch(logId).catch(() => null);
   if (!log?.send) return false;
 
-  const orders = listOrders({ dayKey: key });
-  const summary = buildDailySummaryEmbed({ dayKey: key, orders });
-  const details = buildOrderListEmbeds({ dayKey: key, orders });
+  const orders = listOrdersInRange(startKey, endKey);
+  const title = `📊 สรุปยอดร้าน · ${label}`;
+  const summary = buildDailySummaryEmbed({ dayKey: startKey, orders, title, footerTag });
+  const details = buildOrderListEmbeds({
+    dayKey: startKey,
+    orders,
+    title: `🧾 รายการออเดอร์ · ${label}`,
+  });
   const messages = packEmbeds([summary, ...details]);
   const csv = buildDailySummaryCsv(orders);
 
   let xlsx = null;
   try {
-    xlsx = await buildDailySummaryXlsx({ dayKey: key, orders });
+    xlsx = await buildDailySummaryXlsx({ dayKey: startKey, orders, title: label });
   } catch (err) {
-    console.warn(`[shop] daily summary xlsx failed: ${err.message}`);
+    console.warn(`[shop] ${fileBase} xlsx failed: ${err.message}`);
   }
 
   let allSent = true;
@@ -617,15 +649,15 @@ async function sendDailySummary(client, key) {
     const payload = { embeds: messages[i] };
     if (i === 0) {
       payload.files = [
-        ...(xlsx ? [new AttachmentBuilder(xlsx, { name: `orders-${key}.xlsx` })] : []),
-        new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `orders-${key}.csv` }),
+        ...(xlsx ? [new AttachmentBuilder(xlsx, { name: `${fileBase}.xlsx` })] : []),
+        new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `${fileBase}.csv` }),
       ];
     }
     const sent = await log
       .send(payload)
       .then(() => true)
       .catch((err) => {
-        console.warn(`[shop] daily summary failed (part ${i + 1}/${messages.length}): ${err.message}`);
+        console.warn(`[shop] ${fileBase} failed (part ${i + 1}/${messages.length}): ${err.message}`);
         return false;
       });
     if (!sent) allSent = false;
@@ -636,16 +668,59 @@ async function sendDailySummary(client, key) {
 // ส่งสรุปยอดรายได้รายวัน (ค่าเริ่มต้น = วันนี้) — ใช้ตอนตั้งเวลา/เรียกเอง
 export async function postDailySummary(client, keyArg = null) {
   const key = keyArg || dayKey();
-  const ok = await sendDailySummary(client, key);
+  const ok = await sendSummary(client, {
+    startKey: key,
+    endKey: key,
+    label: key,
+    footerTag: 'DAILY',
+    fileBase: `orders-${key}`,
+  });
   console.log(`[shop] daily summary (${key}) => ${ok ? 'sent' : 'skipped'}`);
   return ok;
 }
 
-// คำนวณ ms จนถึงเวลา HH:MM ถัดไปใน timezone ที่กำหนด (export ไว้เทสต์)
-export function msUntilNextDailyTime(timeStr, tz, now = new Date()) {
+// ส่งสรุปยอดตามช่วง: day (วันเดียว) / week (จันทร์–อาทิตย์) / month (ทั้งเดือน)
+// anchor = วันที่ใดก็ได้ในช่วง (YYYY-MM-DD) — ไม่ใส่ = วันนี้
+export async function postPeriodSummary(client, { period = 'day', anchor = null } = {}) {
+  const key = anchor || dayKey();
+  if (period === 'week') {
+    const { startKey, endKey } = weekRange(key);
+    const label = `สัปดาห์ ${startKey} ~ ${endKey}`;
+    const ok = await sendSummary(client, {
+      startKey,
+      endKey,
+      label,
+      footerTag: 'WEEKLY',
+      fileBase: `orders-week-${startKey}_${endKey}`,
+    });
+    console.log(`[shop] weekly summary (${startKey}..${endKey}) => ${ok ? 'sent' : 'skipped'}`);
+    return ok;
+  }
+  if (period === 'month') {
+    const { startKey, endKey } = monthRange(key);
+    const label = `เดือน ${startKey.slice(0, 7)}`;
+    const ok = await sendSummary(client, {
+      startKey,
+      endKey,
+      label,
+      footerTag: 'MONTHLY',
+      fileBase: `orders-${startKey.slice(0, 7)}`,
+    });
+    console.log(`[shop] monthly summary (${startKey.slice(0, 7)}) => ${ok ? 'sent' : 'skipped'}`);
+    return ok;
+  }
+  return postDailySummary(client, key);
+}
+
+function parseHHMM(timeStr) {
   const [h, m] = String(timeStr || '23:59')
     .split(':')
     .map((v) => parseInt(v, 10) || 0);
+  return { h, m };
+}
+
+// แปลงเวลาปัจจุบันเป็นส่วนประกอบเวลาใน timezone ปลายทาง + localNow (epoch แบบเวลาท้องถิ่น)
+function zonedParts(tz, now) {
   const dtf = new Intl.DateTimeFormat('en-US', {
     timeZone: tz,
     hourCycle: 'h23',
@@ -657,11 +732,53 @@ export function msUntilNextDailyTime(timeStr, tz, now = new Date()) {
     second: '2-digit',
   });
   const p = Object.fromEntries(dtf.formatToParts(now).map((x) => [x.type, x.value]));
-  const offset = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - now.getTime();
-  const localNow = now.getTime() + offset;
-  let target = Date.UTC(+p.year, +p.month - 1, +p.day, h, m, 0);
-  if (target <= localNow) target += 86400000;
-  return target - localNow;
+  return {
+    year: +p.year,
+    month: +p.month,
+    day: +p.day,
+    localNow: Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second),
+  };
+}
+
+// คำนวณ ms จนถึงเวลา HH:MM ถัดไปใน timezone ที่กำหนด (export ไว้เทสต์)
+export function msUntilNextDailyTime(timeStr, tz, now = new Date()) {
+  const { h, m } = parseHHMM(timeStr);
+  const p = zonedParts(tz, now);
+  let target = Date.UTC(p.year, p.month - 1, p.day, h, m, 0);
+  if (target <= p.localNow) target += 86400000;
+  return target - p.localNow;
+}
+
+// รับได้ทั้ง 0-6 (0 = อาทิตย์) และ mon/tue/wed/thu/fri/sat/sun
+export function parseWeekday(value, fallback = 0) {
+  const text = String(value ?? '').trim().toLowerCase();
+  const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  if (text in map) return map[text];
+  const num = parseInt(text, 10);
+  return Number.isInteger(num) && num >= 0 && num <= 6 ? num : fallback;
+}
+
+// คำนวณ ms จนถึงวันในสัปดาห์ถัดไป (targetDow: 0 = อาทิตย์)
+export function msUntilNextWeeklyTime(timeStr, tz, now = new Date(), targetDow = 0) {
+  const { h, m } = parseHHMM(timeStr);
+  const p = zonedParts(tz, now);
+  const dow = new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
+  const ahead = (targetDow - dow + 7) % 7;
+  let target = Date.UTC(p.year, p.month - 1, p.day + ahead, h, m, 0);
+  if (target <= p.localNow) target = Date.UTC(p.year, p.month - 1, p.day + ahead + 7, h, m, 0);
+  return target - p.localNow;
+}
+
+// คำนวณ ms จนถึงวันสุดท้ายของเดือน (หรือเดือนถัดไปถ้าเลยเวลาแล้ว)
+export function msUntilNextMonthlyTime(timeStr, tz, now = new Date()) {
+  const { h, m } = parseHHMM(timeStr);
+  const p = zonedParts(tz, now);
+  const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+  let target = Date.UTC(p.year, p.month - 1, daysInMonth(p.year, p.month), h, m, 0);
+  if (target <= p.localNow) {
+    target = Date.UTC(p.year, p.month, daysInMonth(p.year, p.month + 1), h, m, 0);
+  }
+  return target - p.localNow;
 }
 
 // ตั้งเวลาให้ส่งสรุปยอดรายได้รายวันเข้าช่องแจ้งเตือนออเดอร์อัตโนมัติ
@@ -674,6 +791,41 @@ export function scheduleDailySummary(client) {
   const timer = setTimeout(async () => {
     await postDailySummary(client).catch(() => {});
     scheduleDailySummary(client);
+  }, delay);
+  return timer;
+}
+
+// ตั้งเวลาสรุปรายสัปดาห์ (ค่าเริ่มต้น: อาทิตย์ 23:59 — สรุปจันทร์–อาทิตย์)
+export function scheduleWeeklySummary(client) {
+  if (!config.shop.orderLogChannelId) return null;
+  const time = config.shop.weeklySummaryTime;
+  if (!time || time.toLowerCase() === 'off') return null;
+  const targetDow = parseWeekday(config.shop.weeklySummaryDay, 0);
+  const delay = msUntilNextWeeklyTime(time, config.shop.timezone, new Date(), targetDow);
+  const hrs = (delay / 3600000).toFixed(2);
+  console.log(
+    `[shop] จะส่งสรุปยอดรายสัปดาห์ในอีก ${hrs} ชม. (วัน ${config.shop.weeklySummaryDay} ${time} ${config.shop.timezone})`,
+  );
+  const timer = setTimeout(async () => {
+    await postPeriodSummary(client, { period: 'week' }).catch(() => {});
+    scheduleWeeklySummary(client);
+  }, delay);
+  return timer;
+}
+
+// ตั้งเวลาสรุปรายเดือน (ค่าเริ่มต้น: วันสุดท้ายของเดือน 23:59)
+export function scheduleMonthlySummary(client) {
+  if (!config.shop.orderLogChannelId) return null;
+  const time = config.shop.monthlySummaryTime;
+  if (!time || time.toLowerCase() === 'off') return null;
+  const delay = msUntilNextMonthlyTime(time, config.shop.timezone);
+  const hrs = (delay / 3600000).toFixed(2);
+  console.log(
+    `[shop] จะส่งสรุปยอดรายเดือนในอีก ${hrs} ชม. (วันสุดท้ายของเดือน ${time} ${config.shop.timezone})`,
+  );
+  const timer = setTimeout(async () => {
+    await postPeriodSummary(client, { period: 'month' }).catch(() => {});
+    scheduleMonthlySummary(client);
   }, delay);
   return timer;
 }

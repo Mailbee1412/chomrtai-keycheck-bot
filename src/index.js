@@ -5,7 +5,13 @@ import { config, missingConfig } from './config.js';
 import { handleKeys, handleCheckKeyInteraction } from './handlers/keycheck.js';
 import { postWelcome } from './handlers/welcome.js';
 import { postSupportForm, handleSupportFormInteraction } from './features/supportForm/handler.js';
-import { postShopPanel, handleShopInteraction, scheduleDailySummary } from './features/shop/handler.js';
+import {
+  postShopPanel,
+  handleShopInteraction,
+  scheduleDailySummary,
+  scheduleWeeklySummary,
+  scheduleMonthlySummary,
+} from './features/shop/handler.js';
 import { PRICE_COMMAND_NAME, priceCommandJSON, handlePriceCommand } from './features/shop/priceCommand.js';
 import {
   SUMMARY_COMMAND_NAME,
@@ -110,6 +116,8 @@ client.once(Events.ClientReady, async (c) => {
   await postSupportForm(c).catch((err) => console.warn(`[supportForm] ${err.message}`));
   await postShopPanel(c).catch((err) => console.warn(`[shop] ${err.message}`));
   scheduleDailySummary(c);
+  scheduleWeeklySummary(c);
+  scheduleMonthlySummary(c);
 });
 
 client.on(Events.MessageCreate, async (message) => {

@@ -276,15 +276,15 @@ function clipLines(lines, limit = 1024) {
   return out.join('\n');
 }
 
-export function buildDailySummaryEmbed({ dayKey, orders = [] }) {
+export function buildDailySummaryEmbed({ dayKey, orders = [], title = null, footerTag = 'DAILY' }) {
   const paid = orders.filter((o) => o.amount != null);
   const pending = orders.length - paid.length;
   const total = paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
 
   const embed = new EmbedBuilder()
     .setColor(0xefb810)
-    .setTitle(`📊 สรุปยอดร้าน · ${dayKey}`)
-    .setFooter({ text: `${config.shopName || 'ร้านค้า'} • DAILY` })
+    .setTitle(title || `📊 สรุปยอดร้าน · ${dayKey}`)
+    .setFooter({ text: `${config.shopName || 'ร้านค้า'} • ${footerTag}` })
     .setTimestamp(new Date())
     .addFields(
       { name: 'ยอดรวม (จากสลิป)', value: formatMoney(total), inline: true },
@@ -338,7 +338,7 @@ export function buildOrderLine(order) {
 }
 
 // การ์ดรายการออเดอร์ — แบ่งหลายใบเมื่อรายการยาว แต่ "ไม่ตัดทิ้ง" ทุกรายการอยู่ใน embed
-export function buildOrderListEmbeds({ dayKey, orders = [], maxChars = 3600 }) {
+export function buildOrderListEmbeds({ dayKey, orders = [], maxChars = 3600, title = null }) {
   if (!orders.length) return [];
 
   const chunks = [];
@@ -356,12 +356,11 @@ export function buildOrderListEmbeds({ dayKey, orders = [], maxChars = 3600 }) {
   }
   if (current.length) chunks.push(current);
 
+  const heading = title || `🧾 รายการออเดอร์ · ${dayKey}`;
   return chunks.map((lines, index) =>
     new EmbedBuilder()
       .setColor(0xefb810)
-      .setTitle(
-        `🧾 รายการออเดอร์ · ${dayKey}${chunks.length > 1 ? ` (${index + 1}/${chunks.length})` : ''}`,
-      )
+      .setTitle(`${heading}${chunks.length > 1 ? ` (${index + 1}/${chunks.length})` : ''}`)
       .setDescription(lines.join('\n'))
       .setFooter({ text: `ทั้งหมด ${orders.length} รายการ` }),
   );

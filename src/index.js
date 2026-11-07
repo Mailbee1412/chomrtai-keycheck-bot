@@ -7,6 +7,11 @@ import { postWelcome } from './handlers/welcome.js';
 import { postSupportForm, handleSupportFormInteraction } from './features/supportForm/handler.js';
 import { postShopPanel, handleShopInteraction, scheduleDailySummary } from './features/shop/handler.js';
 import { PRICE_COMMAND_NAME, priceCommandJSON, handlePriceCommand } from './features/shop/priceCommand.js';
+import {
+  SUMMARY_COMMAND_NAME,
+  summaryCommandJSON,
+  handleSummaryCommand,
+} from './features/shop/summaryCommand.js';
 
 const DEBUG_LOG = path.join(process.cwd(), 'data', 'debug.log');
 function dlog(...args) {
@@ -72,7 +77,7 @@ acquireLock();
 async function registerCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(config.token);
-    const body = [priceCommandJSON()];
+    const body = [priceCommandJSON(), summaryCommandJSON()];
     if (config.guildId) {
       await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body });
       console.log(`[commands] ลงทะเบียนคำสั่งในกิลด์ ${config.guildId} แล้ว`);
@@ -124,6 +129,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand?.() && interaction.commandName === PRICE_COMMAND_NAME) {
       const priceHandled = await handlePriceCommand(interaction);
       dlog('price handled =', priceHandled);
+      return;
+    }
+    if (interaction.isChatInputCommand?.() && interaction.commandName === SUMMARY_COMMAND_NAME) {
+      const summaryHandled = await handleSummaryCommand(interaction);
+      dlog('summary handled =', summaryHandled);
       return;
     }
     const handled = await handleSupportFormInteraction(interaction);

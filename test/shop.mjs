@@ -187,6 +187,11 @@ const {
   buildOrderListEmbeds,
 } = await import('../src/features/shop/embeds.js');
 const { buildDailySummaryXlsx } = await import('../src/features/shop/xlsx.js');
+const {
+  SUMMARY_COMMAND_NAME,
+  normalizeSummaryDayKey,
+  handleSummaryCommand,
+} = await import('../src/features/shop/summaryCommand.js');
 
 // ---------- store ----------
 store.ensureSeeded();
@@ -480,7 +485,20 @@ const dailyOrders = [
     userId: 'u1',
     userName: 'tester',
     productName: '🥃 ◦ Long Island [ Gemini Pro / Flash ]',
+    quantity: 100,
+    expected: 100,
     amount: 100,
+    priceMatch: true,
+    slipWarnings: [],
+    slipUrls: ['https://cdn.example/slip1.png'],
+    transfer: {
+      sendingBank: 'KBANK',
+      receivingBank: 'SCB',
+      senderName: 'สมชาย ใจดี',
+      receiverName: 'ร้านของฉัน',
+      paidAt: '2026-10-14T10:05:00Z',
+      transRef: 'REF001',
+    },
     createdAt: '2026-10-14T10:00:00Z',
     closedAt: '2026-10-14T11:00:00Z',
   },
@@ -489,7 +507,11 @@ const dailyOrders = [
     userId: 'u2',
     userName: 'mint',
     productName: '🎨 ◦ Theme',
+    quantity: 200,
+    expected: 200,
     amount: 250,
+    priceMatch: false,
+    slipWarnings: ['ยอดโอนเกินราคา'],
     createdAt: '2026-10-14T12:00:00Z',
     closedAt: null,
   },
@@ -511,6 +533,7 @@ check('สรุปรายวันรวมยอดจากสลิป (35
 check('สรุปรายวันนับที่ยังไม่แนบสลิป', dailyText.includes('ยังไม่แนบสลิป'), '');
 check('สรุปรายวันแยกตามบริการ', dailyText.includes('Theme × 2'), dailyText.slice(0, 300));
 check('สรุปรายวันชี้ไปการ์ดรายการออเดอร์', dailyText.includes('ครบทั้ง 3 รายการ'), dailyText.slice(0, 300));
+check('สรุปรายวันสรุปผลตรวจสลิป (ตรง 1 / ไม่ตรง 1)', dailyText.includes('ตรง : 1') && dailyText.includes('ไม่ตรง : 1'), dailyText.slice(0, 400));
 check(
   'สรุปรายวันไม่บอกว่าไม่มีออเดอร์',
   !JSON.stringify(buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: [] }).toJSON()).includes('350'),
@@ -526,13 +549,20 @@ check(
   dailyDetailText.includes('#0001') && dailyDetailText.includes('#0003'),
   dailyDetailText.slice(0, 300),
 );
-check('การ์ดรายการแสดงครบ 3 รายการ', (dailyDetailText.match(/[✅🕓] #/g) || []).length === 3, dailyDetailText.slice(0, 300));
+check(
+  'การ์ดรายการแสดงครบ 3 รายการ',
+  (dailyDetailText.match(/[✅🕓🔎⚠️] #/g) || []).length === 3,
+  dailyDetailText.slice(0, 300),
+);
+check('การ์ดรายการเตือนยอดไม่ตรง + บอกยอดที่ควรได้', dailyDetailText.includes('⚠️ #0002') && dailyDetailText.includes('ควรได้ 200'), dailyDetailText.slice(0, 400));
 
 const dailyCsv = buildDailySummaryCsv(dailyOrders);
 check('CSV มีหัวตาราง', dailyCsv.includes('เลขที่') && dailyCsv.includes('ยอดจากสลิป'), dailyCsv.slice(0, 80));
 check('CSV มีเลขที่ออเดอร์', dailyCsv.includes('0001') && dailyCsv.includes('0003'), dailyCsv.slice(0, 160));
 check('CSV มีบริการและยอด', dailyCsv.includes('Long Island') && dailyCsv.includes('100'), '');
 check('CSV มีบรรทัดครบ (หัว + 3 ออเดอร์)', dailyCsv.split('\r\n').length === 4, String(dailyCsv.split('\r\n').length));
+check('CSV มีผลตรวจสลิป', dailyCsv.includes('ผลตรวจ') && dailyCsv.includes(',ตรง,') && dailyCsv.includes(',ไม่ตรง,'), dailyCsv.slice(0, 300));
+check('CSV มีเลขอ้างอิงการโอน', dailyCsv.includes('REF001'), dailyCsv.slice(0, 400));
 
 const dailyXlsx = await buildDailySummaryXlsx({ dayKey: '2026-10-14', orders: dailyOrders });
 check(
@@ -551,6 +581,12 @@ check('Excel มีแถวออเดอร์ครบ 3 + แถวรว�
 check('Excel เลขที่ออเดอร์ถูกต้อง', orderSheet?.getRow(2).getCell(1).value === '0001', String(orderSheet?.getRow(2).getCell(1).value));
 check('Excel มียอดรวมท้ายตาราง', orderSheet?.getRow(5).getCell(5).value === 'รวม', String(orderSheet?.getRow(5).getCell(5).value));
 check('Excel มีชีต "สรุป"', Boolean(readWorkbook.getWorksheet('สรุป')));
+check('Excel มีคอลัมน์ผลตรวจ + ยอดที่ควรได้', orderSheet?.getRow(1).getCell(7).value.includes('ยอดที่ควรได้') && orderSheet?.getRow(1).getCell(9).value === 'ผลตรวจ', String(orderSheet?.getRow(1).getCell(9).value));
+check('Excel แถวแรกผลตรวจ = ตรง', orderSheet?.getRow(2).getCell(9).value === 'ตรง', String(orderSheet?.getRow(2).getCell(9).value));
+check('Excel แถวแรกยอดที่ควรได้ = 100', orderSheet?.getRow(2).getCell(7).value === 100, String(orderSheet?.getRow(2).getCell(7).value));
+check('Excel แถวแรกเลขอ้างอิง = REF001', orderSheet?.getRow(2).getCell(13).value === 'REF001', String(orderSheet?.getRow(2).getCell(13).value));
+check('Excel แถวที่สองผลตรวจ = ไม่ตรง', orderSheet?.getRow(3).getCell(9).value === 'ไม่ตรง', String(orderSheet?.getRow(3).getCell(9).value));
+check('Excel มีลิงก์เปิดสลิป', orderSheet?.getRow(2).getCell(15).value?.hyperlink === 'https://cdn.example/slip1.png', JSON.stringify(orderSheet?.getRow(2).getCell(15).value));
 
 // ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({
@@ -576,7 +612,8 @@ check(
   manyOrders.every((o) => manyDetailText.includes(`#${String(o.orderNo).padStart(4, '0')}`)),
   manyDetailText.slice(-200),
 );
-check('สรุป 30 ออเดอร์: แสดงครบ 30 บรรทัด', (manyDetailText.match(/[✅🕓] #/g) || []).length === 30, String((manyDetailText.match(/[✅🕓] #/g) || []).length));
+const manyMarks = manyDetailText.match(/[✅🕓🔎⚠️] #/g) || [];
+check('สรุป 30 ออเดอร์: แสดงครบ 30 บรรทัด', manyMarks.length === 30, String(manyMarks.length));
 check('สรุป 30 ออเดอร์: ไม่มีการตัดทิ้ง', !manyDetailText.includes('และอีก'), manyDetailText.slice(-120));
 check(
   'สรุป 30 ออเดอร์: description ไม่เกิน 4096 ตัว',
@@ -634,6 +671,59 @@ check(
   JSON.stringify(summaryPayload?.files?.map((f) => f?.name)),
 );
 check('สรุปไม่มี content ยาว ๆ แล้ว', !summaryPayload?.content, String(summaryPayload?.content || ''));
+
+// ---------- คำสั่ง /สรุปยอด (เช็คย้อนหลัง) ----------
+function summaryCommandInteraction({ staff = false, date = null } = {}) {
+  const i = {
+    isChatInputCommand: () => true,
+    commandName: SUMMARY_COMMAND_NAME,
+    options: { getString: () => date },
+    user: { id: 'u1' },
+    member: { id: 'u1', roles: { cache: { some: () => false } } },
+    memberPermissions: { has: (flag) => staff && (flag === 8n || flag === 16n) },
+    reply: mkReply('reply'),
+    deferReply: mkReply('deferReply'),
+    editReply: mkReply('editReply'),
+    client: client(),
+  };
+  return i;
+}
+
+check('ชื่อคำสั่งคือ /สรุปยอด', SUMMARY_COMMAND_NAME === 'สรุปยอด');
+check('ตรวจวันที่ถูกต้อง', normalizeSummaryDayKey('2026-10-14') === '2026-10-14');
+check('ไม่ใส่วันที่ = วันนี้', normalizeSummaryDayKey() === store.dayKey(), store.dayKey());
+check('วันที่ผิดรูปแบบถูกปฏิเสธ', normalizeSummaryDayKey('14/10/2026') === null);
+check('วันที่ไม่มีจริงถูกปฏิเสธ', normalizeSummaryDayKey('2026-02-30') === null);
+
+calls.length = 0;
+check('ผู้ใช้ทั่วไปเรียก /สรุปยอด ไม่ได้', (await handleSummaryCommand(summaryCommandInteraction())) === true);
+check(
+  'ผู้ใช้ทั่วไปเห็นข้อความเฉพาะทีมงาน',
+  calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64 && /ทีมงาน/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ผู้ใช้ทั่วไปไม่ทำให้เกิดการส่งสรุป', !calls.some((c) => c[0] === 'logSend'));
+
+calls.length = 0;
+check('ทีมงานเรียก /สรุปยอด ได้', (await handleSummaryCommand(summaryCommandInteraction({ staff: true, date: '2026-10-14' }))) === true);
+check('สรุปย้อนหลังถูกส่งเข้า log', calls.some((c) => c[0] === 'logSend'), JSON.stringify(calls.map((c) => c[0])));
+check(
+  'แจ้งผลว่าส่งสรุปของวันไหน',
+  calls.some((c) => c[0] === 'editReply' && /2026-10-14/.test(c[1]?.content || '')),
+  JSON.stringify(calls.filter((c) => c[0] === 'editReply')),
+);
+
+calls.length = 0;
+check(
+  'วันที่ผิด → จัดการจบ',
+  (await handleSummaryCommand(summaryCommandInteraction({ staff: true, date: '14/10/2026' }))) === true,
+);
+check(
+  'วันที่ผิด → แจ้งรูปแบบ YYYY-MM-DD',
+  calls.some((c) => c[0] === 'reply' && /YYYY-MM-DD/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('วันที่ผิด → ไม่ส่งสรุป', !calls.some((c) => c[0] === 'logSend'));
 
 // ---------- อ่านสลิปอัตโนมัติ (mock ผู้ให้บริการ) ----------
 const { config } = await import('../src/config.js');

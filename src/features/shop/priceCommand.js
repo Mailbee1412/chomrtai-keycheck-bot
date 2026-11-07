@@ -36,7 +36,7 @@ export function priceCommandJSON() {
   return builder.toJSON();
 }
 
-function isStaff(interaction) {
+export function isStaff(interaction) {
   const member = interaction.member;
   if (!member) return false;
   // discord.js ไม่ขยายสิทธิ์ Administrator ให้ครบทุกบิต ต้องเช็คเอง

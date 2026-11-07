@@ -602,9 +602,11 @@ check('Excel มีชีต "สรุป"', Boolean(readWorkbook.getWorksheet(
 check('Excel มีคอลัมน์ผลตรวจ + ยอดที่ควรได้', orderSheet?.getRow(1).getCell(7).value.includes('ยอดที่ควรได้') && orderSheet?.getRow(1).getCell(9).value === 'ผลตรวจ', String(orderSheet?.getRow(1).getCell(9).value));
 check('Excel แถวแรกผลตรวจ = ตรง', orderSheet?.getRow(2).getCell(9).value === 'ตรง', String(orderSheet?.getRow(2).getCell(9).value));
 check('Excel แถวแรกยอดที่ควรได้ = 100', orderSheet?.getRow(2).getCell(7).value === 100, String(orderSheet?.getRow(2).getCell(7).value));
-check('Excel แถวแรกเลขอ้างอิง = REF001', orderSheet?.getRow(2).getCell(13).value === 'REF001', String(orderSheet?.getRow(2).getCell(13).value));
+check('Excel แถวแรกผู้โอน = สมชาย ใจดี', orderSheet?.getRow(2).getCell(11).value === 'สมชาย ใจดี', String(orderSheet?.getRow(2).getCell(11).value));
+check('Excel แถวแรกผู้รับ = ร้านของฉัน', orderSheet?.getRow(2).getCell(12).value === 'ร้านของฉัน', String(orderSheet?.getRow(2).getCell(12).value));
+check('Excel แถวแรกเลขอ้างอิง = REF001', orderSheet?.getRow(2).getCell(14).value === 'REF001', String(orderSheet?.getRow(2).getCell(14).value));
 check('Excel แถวที่สองผลตรวจ = ไม่ตรง', orderSheet?.getRow(3).getCell(9).value === 'ไม่ตรง', String(orderSheet?.getRow(3).getCell(9).value));
-check('Excel มีลิงก์เปิดสลิป', orderSheet?.getRow(2).getCell(15).value?.hyperlink === 'https://cdn.example/slip1.png', JSON.stringify(orderSheet?.getRow(2).getCell(15).value));
+check('Excel มีลิงก์เปิดสลิป', orderSheet?.getRow(2).getCell(16).value?.hyperlink === 'https://cdn.example/slip1.png', JSON.stringify(orderSheet?.getRow(2).getCell(16).value));
 
 // ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({

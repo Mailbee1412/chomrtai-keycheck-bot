@@ -24,6 +24,7 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
     { header: 'ผลตรวจ', key: 'result', width: 14 },
     { header: 'เวลาที่โอน', key: 'paidAt', width: 20 },
     { header: 'ผู้โอน', key: 'senderName', width: 20 },
+    { header: 'ผู้รับ', key: 'receiverName', width: 20 },
     { header: 'ธนาคาร', key: 'bank', width: 24 },
     { header: 'เลขอ้างอิง', key: 'transRef', width: 24 },
     { header: 'หมายเหตุ', key: 'warnings', width: 40 },
@@ -52,6 +53,7 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
       result: check.label,
       paidAt: transfer.paidAt ? formatDateTime(transfer.paidAt) : '',
       senderName: transfer.senderName,
+      receiverName: transfer.receiverName,
       bank: transfer.bank,
       transRef: transfer.transRef,
       warnings: check.warnings.join(' | '),
@@ -63,7 +65,7 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
     if (transfer.slipUrl) row.getCell('slip').font = { color: { argb: 'FF0563C1' }, underline: true };
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'P1' };
+  sheet.autoFilter = { from: 'A1', to: 'Q1' };
 
   const paid = orders.filter((o) => o.amount != null);
   const total = paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);

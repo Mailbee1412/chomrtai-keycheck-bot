@@ -210,6 +210,16 @@ export function slipCheckStatus(order = {}) {
     return { key: 'review', label: 'รอตรวจ', mark: '🔎', warnings };
   }
   if (order.priceMatch === true) {
+    // "ตรง" ต้องมีข้อมูลจากการอ่านสลิปจริง (ธนาคาร/เวลาโอน/เลขอ้างอิง)
+    const verified = Boolean(order.transfer && Object.keys(order.transfer).length);
+    if (!verified) {
+      return {
+        key: 'review',
+        label: 'รอตรวจ',
+        mark: '🔎',
+        warnings: [...warnings, 'ยังไม่ได้ยืนยันจากสลิป (ใช้ยอดที่ผู้ซื้อกรอก)'],
+      };
+    }
     return { key: 'ok', label: 'ตรง', mark: '✅', warnings };
   }
   return { key: 'review', label: 'รอตรวจ', mark: '🔎', warnings };

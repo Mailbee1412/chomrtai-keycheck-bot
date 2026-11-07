@@ -185,6 +185,7 @@ const {
   buildDailySummaryEmbed,
   buildDailySummaryCsv,
   buildOrderListEmbeds,
+  slipCheckStatus,
 } = await import('../src/features/shop/embeds.js');
 const { buildDailySummaryXlsx } = await import('../src/features/shop/xlsx.js');
 const {
@@ -555,6 +556,23 @@ check(
   dailyDetailText.slice(0, 300),
 );
 check('การ์ดรายการเตือนยอดไม่ตรง + บอกยอดที่ควรได้', dailyDetailText.includes('⚠️ #0002') && dailyDetailText.includes('ควรได้ 200'), dailyDetailText.slice(0, 400));
+
+const unverifiedCheck = slipCheckStatus({ amount: 100, expected: 100, priceMatch: true, slipWarnings: [] });
+check(
+  'ยอดตรงแต่ยังไม่ได้อ่านสลิป → รอตรวจ',
+  unverifiedCheck.key === 'review' && unverifiedCheck.warnings.some((w) => w.includes('ยังไม่ได้ยืนยัน')),
+  JSON.stringify(unverifiedCheck),
+);
+check(
+  'ยอดตรง + อ่านสลิปแล้ว → ตรง',
+  slipCheckStatus({
+    amount: 100,
+    expected: 100,
+    priceMatch: true,
+    slipWarnings: [],
+    transfer: { transRef: 'REF001' },
+  }).key === 'ok',
+);
 
 const dailyCsv = buildDailySummaryCsv(dailyOrders);
 check('CSV มีหัวตาราง', dailyCsv.includes('เลขที่') && dailyCsv.includes('ยอดจากสลิป'), dailyCsv.slice(0, 80));

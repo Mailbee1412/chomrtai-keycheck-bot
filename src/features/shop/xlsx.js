@@ -2,6 +2,21 @@ import ExcelJS from 'exceljs';
 import { config } from '../../config.js';
 import { formatDateTime, slipCheckStatus, transferDetails } from './embeds.js';
 
+// สีของช่อง "ผลตรวจ" แยกตามสถานะ (พื้นหลัง / ตัวอักษร)
+const RESULT_STYLES = {
+  ok: { fill: 'FFD1FAE5', font: 'FF047857' }, // เขียว
+  mismatch: { fill: 'FFFEE2E2', font: 'FFB91C1C' }, // แดง
+  review: { fill: 'FFFEF3C7', font: 'FFB45309' }, // เหลือง/ส้ม
+  pending: { fill: 'FFE5E7EB', font: 'FF4B5563' }, // เทา
+};
+
+function paintResult(cell, key) {
+  const style = RESULT_STYLES[key] || RESULT_STYLES.review;
+  cell.font = { bold: true, color: { argb: style.font } };
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: style.fill } };
+  cell.alignment = { vertical: 'middle', horizontal: 'center' };
+}
+
 // สร้างไฟล์ Excel (.xlsx) ของสรุปออเดอร์รายวัน — เปิดใน Excel/มือถือได้ทันที
 export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
   const workbook = new ExcelJS.Workbook();
@@ -62,6 +77,10 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
     });
     row.getCell('expected').numFmt = amountFormat;
     row.getCell('amount').numFmt = amountFormat;
+    paintResult(row.getCell('result'), check.key);
+    if (check.key === 'mismatch') {
+      row.getCell('amount').font = { bold: true, color: { argb: 'FFB91C1C' } };
+    }
     if (transfer.slipUrl) row.getCell('slip').font = { color: { argb: 'FF0563C1' }, underline: true };
   }
 
@@ -86,9 +105,12 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [] }) {
   summary.addRow([]);
   const checkHeader = summary.addRow(['ผลตรวจสลิป', 'จำนวน']);
   checkHeader.font = { bold: true };
-  summary.addRow(['ตรง', count('ok')]);
-  summary.addRow(['ไม่ตรง', count('mismatch')]);
-  summary.addRow(['รอตรวจ', count('review')]);
+  const okRow = summary.addRow(['ตรง', count('ok')]);
+  const mismatchRow = summary.addRow(['ไม่ตรง', count('mismatch')]);
+  const reviewRow = summary.addRow(['รอตรวจ', count('review')]);
+  paintResult(okRow.getCell(1), 'ok');
+  paintResult(mismatchRow.getCell(1), 'mismatch');
+  paintResult(reviewRow.getCell(1), 'review');
 
   summary.addRow([]);
   const byServiceHeader = summary.addRow(['บริการ', 'จำนวน', `ยอดรวม (${currency})`]);

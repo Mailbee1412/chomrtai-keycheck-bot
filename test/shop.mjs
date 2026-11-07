@@ -607,6 +607,23 @@ check('Excel แถวแรกผู้รับ = ร้านของฉั�
 check('Excel แถวแรกเลขอ้างอิง = REF001', orderSheet?.getRow(2).getCell(14).value === 'REF001', String(orderSheet?.getRow(2).getCell(14).value));
 check('Excel แถวที่สองผลตรวจ = ไม่ตรง', orderSheet?.getRow(3).getCell(9).value === 'ไม่ตรง', String(orderSheet?.getRow(3).getCell(9).value));
 check('Excel มีลิงก์เปิดสลิป', orderSheet?.getRow(2).getCell(16).value?.hyperlink === 'https://cdn.example/slip1.png', JSON.stringify(orderSheet?.getRow(2).getCell(16).value));
+check(
+  'Excel ผลตรวจ "ตรง" เป็นสีเขียว',
+  orderSheet?.getRow(2).getCell(9).fill?.fgColor?.argb === 'FFD1FAE5' &&
+    orderSheet?.getRow(2).getCell(9).font?.color?.argb === 'FF047857',
+  JSON.stringify({ fill: orderSheet?.getRow(2).getCell(9).fill, font: orderSheet?.getRow(2).getCell(9).font }),
+);
+check(
+  'Excel ผลตรวจ "ไม่ตรง" เป็นสีแดง + ยอดแดง',
+  orderSheet?.getRow(3).getCell(9).fill?.fgColor?.argb === 'FFFEE2E2' &&
+    orderSheet?.getRow(3).getCell(8).font?.color?.argb === 'FFB91C1C',
+  JSON.stringify({ fill: orderSheet?.getRow(3).getCell(9).fill, amount: orderSheet?.getRow(3).getCell(8).font }),
+);
+check(
+  'Excel ผลตรวจ "ยังไม่แนบสลิป" เป็นสีเทา',
+  orderSheet?.getRow(4).getCell(9).fill?.fgColor?.argb === 'FFE5E7EB',
+  JSON.stringify(orderSheet?.getRow(4).getCell(9).fill),
+);
 
 // ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({

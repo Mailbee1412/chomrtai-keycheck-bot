@@ -655,6 +655,34 @@ check(
   JSON.stringify(orderSheet?.getRow(4).getCell(9).fill),
 );
 
+const reviewXlsx = await buildDailySummaryXlsx({
+  dayKey: '2026-10-14',
+  orders: [
+    {
+      orderNo: 9,
+      userId: 'u9',
+      userName: 'review',
+      productName: '🎨 ◦ Theme',
+      amount: 100,
+      expected: 100,
+      priceMatch: true,
+      slipWarnings: [],
+      slipUrls: ['https://cdn.example/slip9.png'],
+      createdAt: '2026-10-14T10:00:00Z',
+      closedAt: null,
+    },
+  ],
+});
+const reviewWorkbook = new ExcelJS.Workbook();
+await reviewWorkbook.xlsx.load(reviewXlsx);
+const reviewSheet = reviewWorkbook.getWorksheet('ออเดอร์');
+check(
+  'Excel ผลตรวจ "รอตรวจ" เป็นสีเหลือง',
+  reviewSheet?.getRow(2).getCell(9).fill?.fgColor?.argb === 'FFFEF3C7' &&
+    reviewSheet?.getRow(2).getCell(9).font?.color?.argb === 'FFB45309',
+  JSON.stringify({ fill: reviewSheet?.getRow(2).getCell(9).fill, font: reviewSheet?.getRow(2).getCell(9).font }),
+);
+
 const weekXlsx = await buildDailySummaryXlsx({
   dayKey: '2026-06-08',
   orders: [dailyOrders[0]],

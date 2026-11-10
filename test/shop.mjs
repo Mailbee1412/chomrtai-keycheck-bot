@@ -654,6 +654,29 @@ check(
   orderSheet?.getRow(4).getCell(9).fill?.fgColor?.argb === 'FFE5E7EB',
   JSON.stringify(orderSheet?.getRow(4).getCell(9).fill),
 );
+check(
+  'Excel ตรึงแถวหัวตาราง',
+  orderSheet?.views?.[0]?.state === 'frozen' && orderSheet?.views?.[0]?.ySplit === 1,
+  JSON.stringify(orderSheet?.views),
+);
+check(
+  'Excel เปิดตัวกรองครอบเฉพาะแถวข้อมูล',
+  orderSheet?.autoFilter === 'A1:Q4',
+  String(orderSheet?.autoFilter),
+);
+check(
+  'Excel ความกว้างคอลัมน์อ่านง่าย',
+  orderSheet?.getColumn(1).width === 8 &&
+    orderSheet?.getColumn(5).width === 40 &&
+    orderSheet?.getColumn(15).width === 36 &&
+    orderSheet?.getColumn(17).width === 10,
+  [1, 5, 15, 17].map((c) => orderSheet?.getColumn(c).width).join(','),
+);
+check(
+  'Excel หัวตารางสูงขึ้น + แถวรวมมีสี',
+  orderSheet?.getRow(1).height === 26 && orderSheet?.getRow(5).fill?.fgColor?.argb === 'FFFFF4CC',
+  JSON.stringify({ h: orderSheet?.getRow(1).height, fill: orderSheet?.getRow(5).fill }),
+);
 
 const reviewXlsx = await buildDailySummaryXlsx({
   dayKey: '2026-10-14',

@@ -28,29 +28,32 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [], title = null 
 
   const sheet = workbook.addWorksheet('ออเดอร์');
   sheet.columns = [
-    { header: 'เลขที่', key: 'no', width: 10 },
-    { header: 'วันที่เปิด', key: 'createdAt', width: 20 },
-    { header: 'ผู้ซื้อ', key: 'userName', width: 18 },
-    { header: 'ผู้ซื้อ (ID)', key: 'userId', width: 20 },
-    { header: 'บริการ', key: 'product', width: 44 },
-    { header: 'จำนวน', key: 'quantity', width: 10 },
-    { header: `ยอดที่ควรได้ (${currency})`, key: 'expected', width: 18 },
-    { header: `ยอดจากสลิป (${currency})`, key: 'amount', width: 18 },
-    { header: 'ผลตรวจ', key: 'result', width: 14 },
-    { header: 'เวลาที่โอน', key: 'paidAt', width: 20 },
-    { header: 'ผู้โอน', key: 'senderName', width: 20 },
-    { header: 'ผู้รับ', key: 'receiverName', width: 20 },
+    { header: 'เลขที่', key: 'no', width: 8 },
+    { header: 'วันที่เปิด', key: 'createdAt', width: 19 },
+    { header: 'ผู้ซื้อ', key: 'userName', width: 16 },
+    { header: 'ผู้ซื้อ (ID)', key: 'userId', width: 16 },
+    { header: 'บริการ', key: 'product', width: 40 },
+    { header: 'จำนวน', key: 'quantity', width: 8 },
+    { header: `ยอดที่ควรได้ (${currency})`, key: 'expected', width: 16 },
+    { header: `ยอดจากสลิป (${currency})`, key: 'amount', width: 16 },
+    { header: 'ผลตรวจ', key: 'result', width: 10 },
+    { header: 'เวลาที่โอน', key: 'paidAt', width: 19 },
+    { header: 'ผู้โอน', key: 'senderName', width: 18 },
+    { header: 'ผู้รับ', key: 'receiverName', width: 18 },
     { header: 'ธนาคาร', key: 'bank', width: 24 },
-    { header: 'เลขอ้างอิง', key: 'transRef', width: 24 },
-    { header: 'หมายเหตุ', key: 'warnings', width: 40 },
-    { header: 'สลิป', key: 'slip', width: 14 },
-    { header: 'สถานะ', key: 'status', width: 12 },
+    { header: 'เลขอ้างอิง', key: 'transRef', width: 22 },
+    { header: 'หมายเหตุ', key: 'warnings', width: 36 },
+    { header: 'สลิป', key: 'slip', width: 10 },
+    { header: 'สถานะ', key: 'status', width: 10 },
   ];
 
+  // ตรึงแถวหัวตาราง (เลื่อนดูข้อมูลด้านล่างได้โดยหัวตารางยังอยู่)
   sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  sheet.properties.defaultRowHeight = 22;
   const headerRow = sheet.getRow(1);
+  headerRow.height = 26;
   headerRow.font = { bold: true };
-  headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+  headerRow.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
   headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFB810' } };
 
   for (const order of orders) {
@@ -75,6 +78,16 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [], title = null 
       slip: transfer.slipUrl ? { text: 'เปิดสลิป', hyperlink: transfer.slipUrl } : '',
       status: order.closedAt ? 'ปิดแล้ว' : 'ยังเปิด',
     });
+    row.height = 22;
+    for (const key of ['no', 'quantity', 'result', 'slip', 'status']) {
+      row.getCell(key).alignment = { vertical: 'middle', horizontal: 'center' };
+    }
+    const warningsCell = row.getCell('warnings');
+    warningsCell.alignment = { vertical: 'middle', wrapText: true };
+    if (check.warnings.length) {
+      const len = check.warnings.join(' | ').length;
+      row.height = Math.max(22, 16 * Math.ceil(len / 34) + 6);
+    }
     row.getCell('expected').numFmt = amountFormat;
     row.getCell('amount').numFmt = amountFormat;
     paintResult(row.getCell('result'), check.key);
@@ -84,17 +97,23 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [], title = null 
     if (transfer.slipUrl) row.getCell('slip').font = { color: { argb: 'FF0563C1' }, underline: true };
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'Q1' };
+  // เปิดตัวกรองที่หัวตาราง ครอบเฉพาะแถวข้อมูล (ไม่รวมแถวรวมท้ายตาราง)
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1 + orders.length, column: 17 },
+  };
 
   const paid = orders.filter((o) => o.amount != null);
   const total = paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
   const totalRow = sheet.addRow({ product: 'รวม', amount: total });
   totalRow.font = { bold: true };
+  totalRow.height = 22;
   totalRow.getCell('amount').numFmt = amountFormat;
+  totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4CC' } };
 
   // ชีตสรุปสำหรับทำบัญชี
   const summary = workbook.addWorksheet('สรุป');
-  summary.columns = [{ width: 28 }, { width: 24 }];
+  summary.columns = [{ width: 30 }, { width: 16 }, { width: 20 }];
   summary.addRow(['สรุปยอดร้าน', title || dayKey]).font = { bold: true };
   summary.addRow(['จำนวนออเดอร์', orders.length]);
   summary.addRow(['ยอดรวม (จากสลิป)', total]).getCell(2).numFmt = amountFormat;

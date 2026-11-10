@@ -115,6 +115,7 @@ export async function buildDailySummaryXlsx({ dayKey, orders = [], title = null 
   const summary = workbook.addWorksheet('สรุป');
   summary.columns = [{ width: 30 }, { width: 16 }, { width: 20 }];
   summary.addRow(['สรุปยอดร้าน', title || dayKey]).font = { bold: true };
+  summary.addRow(['สร้างเมื่อ', formatDateTime(new Date().toISOString())]);
   summary.addRow(['จำนวนออเดอร์', orders.length]);
   summary.addRow(['ยอดรวม (จากสลิป)', total]).getCell(2).numFmt = amountFormat;
   summary.addRow(['ยังไม่แนบสลิป', orders.length - paid.length]);

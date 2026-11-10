@@ -4,8 +4,12 @@ node_modules/
 assets/*.png
 data/*.json
 data/*.xlsx
+data/*.csv
 data/*.tmp
 data/*.lock
+# สำเนาสรุป/สำรองข้อมูลอัตโนมัติ — ห้ามขึ้น GitHub (มีข้อมูลลูกค้า)
+data/exports/
+data/backups/
 !data/.gitkeep
 *.log
 .DS_Store

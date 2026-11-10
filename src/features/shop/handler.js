@@ -618,6 +618,43 @@ export function monthRange(anchorKey) {
   };
 }
 
+// เขียนสำเนาไฟล์ลงเครื่อง (data/exports) และสำรองข้อมูล JSON (data/backups)
+// กันข้อมูลหายและใช้เป็นหลักฐานย้อนหลังได้แม้ข้อความใน Discord ถูกลบ
+export function saveLocalCopies({ fileBase, xlsx = null, csv = '', startKey, endKey, label, orders = [] }) {
+  const saved = { xlsx: null, csv: null, backup: null };
+  try {
+    const exportDir = path.join(DATA_DIR, 'exports');
+    fs.mkdirSync(exportDir, { recursive: true });
+    if (xlsx) {
+      const xlsxFile = path.join(exportDir, `${fileBase}.xlsx`);
+      fs.writeFileSync(xlsxFile, xlsx);
+      saved.xlsx = xlsxFile;
+    }
+    const csvFile = path.join(exportDir, `${fileBase}.csv`);
+    fs.writeFileSync(csvFile, `\uFEFF${csv}`, 'utf8');
+    saved.csv = csvFile;
+  } catch (err) {
+    console.warn(`[shop] เขียนไฟล์สำรอง (exports) ไม่สำเร็จ: ${err.message}`);
+  }
+  try {
+    const backupDir = path.join(DATA_DIR, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const backupFile = path.join(backupDir, `${fileBase}.json`);
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      range: { startKey, endKey },
+      label,
+      orderCount: orders.length,
+      orders,
+    };
+    fs.writeFileSync(backupFile, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    saved.backup = backupFile;
+  } catch (err) {
+    console.warn(`[shop] เขียนไฟล์สำรอง (backups) ไม่สำเร็จ: ${err.message}`);
+  }
+  return saved;
+}
+
 // ส่งสรุปยอดของช่วง [startKey, endKey] เข้าช่องแจ้งเตือนออเดอร์
 // การ์ดสรุป + การ์ดรายการออเดอร์ครบทุกรายการ + ไฟล์ Excel + CSV
 async function sendSummary(client, { startKey, endKey, label, footerTag, fileBase }) {
@@ -643,6 +680,10 @@ async function sendSummary(client, { startKey, endKey, label, footerTag, fileBas
   } catch (err) {
     console.warn(`[shop] ${fileBase} xlsx failed: ${err.message}`);
   }
+
+  // เก็บสำเนาลงเครื่องก่อนส่ง — ถ้าส่ง Discord ไม่สำเร็จยังมีไฟล์เก็บไว้
+  const saved = saveLocalCopies({ fileBase, xlsx, csv, startKey, endKey, label, orders });
+  if (saved.backup) console.log(`[shop] สำรองข้อมูลแล้ว: ${saved.backup}`);
 
   let allSent = true;
   for (let i = 0; i < messages.length; i += 1) {
@@ -749,6 +790,13 @@ export function msUntilNextDailyTime(timeStr, tz, now = new Date()) {
   return target - p.localNow;
 }
 
+// สรุปที่ตั้งไว้ช่วงเช้ามืด (ค่าเริ่มต้น <= 00:30) ถือว่าเป็นการสรุป "เมื่อวาน"
+export function isEarlySummaryTime(timeStr, cutoffStr = '00:30') {
+  const t = parseHHMM(timeStr);
+  const c = parseHHMM(cutoffStr);
+  return t.h * 60 + t.m <= c.h * 60 + c.m;
+}
+
 // รับได้ทั้ง 0-6 (0 = อาทิตย์) และ mon/tue/wed/thu/fri/sat/sun
 export function parseWeekday(value, fallback = 0) {
   const text = String(value ?? '').trim().toLowerCase();
@@ -781,15 +829,32 @@ export function msUntilNextMonthlyTime(timeStr, tz, now = new Date()) {
   return target - p.localNow;
 }
 
+// คำนวณ ms จนถึงวันที่ 1 ของเดือนถัดไป เวลา HH:MM (โหมดสรุปเช้ามืด)
+export function msUntilNextMonthStartTime(timeStr, tz, now = new Date()) {
+  const { h, m } = parseHHMM(timeStr);
+  const p = zonedParts(tz, now);
+  // p.month เป็นเลข 1-12 → ใช้เป็น index 0-based ของ "เดือนถัดไป" ได้เลย
+  let target = Date.UTC(p.year, p.month, 1, h, m, 0);
+  if (target <= p.localNow) target = Date.UTC(p.year, p.month + 1, 1, h, m, 0);
+  return target - p.localNow;
+}
+
 // ตั้งเวลาให้ส่งสรุปยอดรายได้รายวันเข้าช่องแจ้งเตือนออเดอร์อัตโนมัติ
 export function scheduleDailySummary(client) {
   if (!config.shop.orderLogChannelId) return null;
   const time = config.shop.dailySummaryTime;
   const delay = msUntilNextDailyTime(time, config.shop.timezone);
+  const fireAt = new Date(Date.now() + delay);
   // จำวันที่เป้าหมายไว้ตั้งแต่ตอนตั้งเวลา กัน Timer ตื่นช้าแล้วข้ามวัน
-  const anchor = dayKey(new Date(Date.now() + delay));
+  // ถ้าตั้งเวลาเช้ามืด (เช่น 00:05) ให้สรุปของ "เมื่อวาน" ไม่ใช่ของวันใหม่ที่เพิ่งเริ่ม
+  const fireDay = dayKey(fireAt);
+  const anchor = isEarlySummaryTime(time)
+    ? dayKey(new Date(fireAt.getTime() - 86400000))
+    : fireDay;
   const hrs = (delay / 3600000).toFixed(2);
-  console.log(`[shop] จะส่งสรุปยอดรายได้รายวันในอีก ${hrs} ชม. (${time} ${config.shop.timezone})`);
+  console.log(
+    `[shop] จะส่งสรุปยอดรายได้รายวันของ ${anchor} ในอีก ${hrs} ชม. (${time} ${config.shop.timezone})`,
+  );
   const timer = setTimeout(async () => {
     await postDailySummary(client, anchor).catch(() => {});
     scheduleDailySummary(client);
@@ -807,17 +872,21 @@ export function weekAnchorForSendDay(sendDayKey) {
   return isoDate(new Date(date.getTime() - dow * 86400000));
 }
 
-// ตั้งเวลาสรุปรายสัปดาห์ (ค่าเริ่มต้น: อาทิตย์ 23:59 — สรุปจันทร์–อาทิตย์)
+// ตั้งเวลาสรุปรายสัปดาห์ (ค่าเริ่มต้น: จันทร์ 00:05 — สรุปจันทร์–อาทิตย์ที่จบแล้ว)
 export function scheduleWeeklySummary(client) {
   if (!config.shop.orderLogChannelId) return null;
   const time = config.shop.weeklySummaryTime;
   if (!time || time.toLowerCase() === 'off') return null;
-  const targetDow = parseWeekday(config.shop.weeklySummaryDay, 0);
+  const targetDow = parseWeekday(config.shop.weeklySummaryDay, 1);
   const delay = msUntilNextWeeklyTime(time, config.shop.timezone, new Date(), targetDow);
-  const anchor = weekAnchorForSendDay(dayKey(new Date(Date.now() + delay)));
+  const fireAt = new Date(Date.now() + delay);
+  // ถ้าส่งเช้ามืด (เช่น จันทร์ 00:05) ให้ยึด \"เมื่อวาน\" เป็นวันส่ง เพื่อสรุปสัปดาห์ที่จบแล้ว
+  const sendDay = dayKey(fireAt);
+  const anchorDay = isEarlySummaryTime(time) ? dayKey(new Date(fireAt.getTime() - 86400000)) : sendDay;
+  const anchor = weekAnchorForSendDay(anchorDay);
   const hrs = (delay / 3600000).toFixed(2);
   console.log(
-    `[shop] จะส่งสรุปยอดรายสัปดาห์ในอีก ${hrs} ชม. (วัน ${config.shop.weeklySummaryDay} ${time} ${config.shop.timezone})`,
+    `[shop] จะส่งสรุปยอดรายสัปดาห์ของ ${anchor} ในอีก ${hrs} ชม. (วัน ${config.shop.weeklySummaryDay} ${time} ${config.shop.timezone})`,
   );
   const timer = setTimeout(async () => {
     await postPeriodSummary(client, { period: 'week', anchor }).catch(() => {});
@@ -826,16 +895,24 @@ export function scheduleWeeklySummary(client) {
   return timer;
 }
 
-// ตั้งเวลาสรุปรายเดือน (ค่าเริ่มต้น: วันสุดท้ายของเดือน 23:59)
+// ตั้งเวลาสรุปรายเดือน (ค่าเริ่มต้น: วันที่ 1 ของเดือนถัดไป 00:05 — สรุปเดือนที่แล้ว)
 export function scheduleMonthlySummary(client) {
   if (!config.shop.orderLogChannelId) return null;
   const time = config.shop.monthlySummaryTime;
   if (!time || time.toLowerCase() === 'off') return null;
-  const delay = msUntilNextMonthlyTime(time, config.shop.timezone);
-  const anchor = dayKey(new Date(Date.now() + delay));
+  const early = isEarlySummaryTime(time);
+  const delay = early
+    ? msUntilNextMonthStartTime(time, config.shop.timezone)
+    : msUntilNextMonthlyTime(time, config.shop.timezone);
+  const fireAt = new Date(Date.now() + delay);
+  // เช้ามืด = เพิ่งขึ้นวันที่ 1 → สรุปเดือนที่เพิ่งจบ (เมื่อวาน) / ไม่เช้ามืด = เดือนของวันนี้
+  const anchor = early
+    ? dayKey(new Date(fireAt.getTime() - 86400000))
+    : dayKey(fireAt);
   const hrs = (delay / 3600000).toFixed(2);
+  const startedAt = monthRange(anchor).startKey;
   console.log(
-    `[shop] จะส่งสรุปยอดรายเดือนในอีก ${hrs} ชม. (วันสุดท้ายของเดือน ${time} ${config.shop.timezone})`,
+    `[shop] จะส่งสรุปยอดรายเดือนของ ${startedAt.slice(0, 7)} ในอีก ${hrs} ชม. (${time} ${config.shop.timezone})`,
   );
   const timer = setTimeout(async () => {
     await postPeriodSummary(client, { period: 'month', anchor }).catch(() => {});

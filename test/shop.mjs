@@ -190,6 +190,9 @@ const {
   msUntilNextDailyTime,
   msUntilNextWeeklyTime,
   msUntilNextMonthlyTime,
+  msUntilNextMonthStartTime,
+  isEarlySummaryTime,
+  saveLocalCopies,
   parseWeekday,
 } = await import('../src/features/shop/handler.js');
 const {
@@ -198,6 +201,8 @@ const {
   buildDailySummaryCsv,
   buildOrderListEmbeds,
   slipCheckStatus,
+  parseThaiDateTime,
+  formatDateTime,
 } = await import('../src/features/shop/embeds.js');
 const { buildDailySummaryXlsx } = await import('../src/features/shop/xlsx.js');
 const {
@@ -205,6 +210,14 @@ const {
   normalizeSummaryDayKey,
   handleSummaryCommand,
 } = await import('../src/features/shop/summaryCommand.js');
+const {
+  AUDIT_COMMAND_NAME,
+  normalizeAuditDayKey,
+  analyzeOrders,
+  buildAuditEmbed,
+  handleAuditCommand,
+} = await import('../src/features/shop/auditCommand.js');
+const { DATA_DIR } = await import('../src/config.js');
 
 // ---------- store ----------
 store.ensureSeeded();
@@ -547,6 +560,7 @@ check('สรุปรายวันนับที่ยังไม่แน�
 check('สรุปรายวันแยกตามบริการ', dailyText.includes('Theme × 2'), dailyText.slice(0, 300));
 check('สรุปรายวันชี้ไปการ์ดรายการออเดอร์', dailyText.includes('ครบทั้ง 3 รายการ'), dailyText.slice(0, 300));
 check('สรุปรายวันสรุปผลตรวจสลิป (ตรง 1 / ไม่ตรง 1)', dailyText.includes('ตรง : 1') && dailyText.includes('ไม่ตรง : 1'), dailyText.slice(0, 400));
+check('สรุปรายวันมีเวลาข้อมูล ณ', dailyText.includes('ข้อมูล ณ'), dailyText.slice(0, 400));
 check(
   'สรุปรายวันไม่บอกว่าไม่มีออเดอร์',
   !JSON.stringify(buildDailySummaryEmbed({ dayKey: '2026-10-14', orders: [] }).toJSON()).includes('350'),
@@ -719,6 +733,16 @@ check(
   weekSummarySheet?.getRow(1).getCell(2).value === 'สัปดาห์ 2026-06-08 ~ 2026-06-14',
   String(weekSummarySheet?.getRow(1).getCell(2).value),
 );
+check(
+  'Excel สรุปมีแถว "สร้างเมื่อ"',
+  weekSummarySheet?.getRow(2).getCell(1).value === 'สร้างเมื่อ' &&
+    typeof weekSummarySheet?.getRow(2).getCell(2).value === 'string' &&
+    weekSummarySheet.getRow(2).getCell(2).value.length > 0,
+  JSON.stringify({
+    label: weekSummarySheet?.getRow(2).getCell(1).value,
+    value: weekSummarySheet?.getRow(2).getCell(2).value,
+  }),
+);
 
 // ---------- สรุปออเดอร์เยอะ (30 รายการ): ต้องแสดงครบ ไม่มีการตัดหาย ----------
 const manyOrders = Array.from({ length: 30 }, (_, i) => ({
@@ -759,6 +783,43 @@ const dA = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T10
 check('คำนวณเวลาสรุปถัดไป ~6ชม59น', dA > 6 * 3600000 && dA < 7 * 3600000, String(dA));
 const dB = msUntilNextDailyTime('23:59', 'Asia/Bangkok', new Date('2026-10-14T18:00:00Z'));
 check('เลยเวลาแล้วเลื่อนเป็นวันถัดไป', dB > 22 * 3600000 && dB < 23 * 3600000, String(dB));
+
+// ---------- โหมดสรุปเช้ามืด + วันที่แบบไทย ----------
+check('00:05 ถือเป็นโหมดเช้ามืด', isEarlySummaryTime('00:05') === true);
+check('00:30 ยังเป็นโหมดเช้ามืด', isEarlySummaryTime('00:30') === true);
+check('00:31 ไม่ใช่โหมดเช้ามืด', isEarlySummaryTime('00:31') === false);
+check('23:59 ไม่ใช่โหมดเช้ามืด', isEarlySummaryTime('23:59') === false);
+const monthStart = msUntilNextMonthStartTime('00:05', 'Asia/Bangkok', new Date('2026-10-31T10:00:00Z'));
+check(
+  'เดือนถัดไป 00:05 = วันที่ 1 เดือนหน้า (~7.08 ชม.)',
+  Math.abs(monthStart / 3600000 - 7.0833) < 0.01,
+  String(monthStart),
+);
+const monthStartAfter = msUntilNextMonthStartTime('00:05', 'Asia/Bangkok', new Date('2026-10-31T18:00:00Z'));
+check(
+  'เลยวันที่ 1 ไปแล้วเลื่อนเป็นเดือนถัดไป',
+  monthStartAfter > 700 * 3600000 && monthStartAfter < 720 * 3600000,
+  String(monthStartAfter),
+);
+const thaiDate = parseThaiDateTime('15 ต.ค. 69 20:39 น.');
+check(
+  'อ่านวันที่ไทย พ.ศ. 2 หลักได้',
+  thaiDate instanceof Date && thaiDate.toISOString() === '2026-10-15T13:39:00.000Z',
+  thaiDate?.toISOString?.() || 'null',
+);
+check('อ่านวันที่ผิดรูปแบบคืน null', parseThaiDateTime('ไม่ใช่วันที่') === null);
+const thaiFullYear = parseThaiDateTime('5 พ.ย. 2569 09:07 น.');
+check(
+  'อ่านวันที่ไทย พ.ศ. 4 หลักได้',
+  thaiFullYear instanceof Date && thaiFullYear.toISOString() === '2026-11-05T02:07:00.000Z',
+  thaiFullYear?.toISOString?.() || 'null',
+);
+check(
+  'formatDateTime แปลงสตริงไทยเป็นวันที่มาตรฐาน',
+  formatDateTime('15 ต.ค. 69 20:39 น.').includes('20:39') &&
+    formatDateTime('15 ต.ค. 69 20:39 น.') !== '15 ต.ค. 69 20:39 น.',
+  formatDateTime('15 ต.ค. 69 20:39 น.'),
+);
 
 // ใส่ออเดอร์ 30 รายการของวันนั้นลง store แล้วส่งสรุปจริง
 for (const order of manyOrders) {
@@ -803,6 +864,47 @@ check(
   JSON.stringify(summaryPayload?.files?.map((f) => f?.name)),
 );
 check('สรุปไม่มี content ยาว ๆ แล้ว', !summaryPayload?.content, String(summaryPayload?.content || ''));
+
+// ---------- สำเนาไฟล์ + สำรองข้อมูลลงเครื่อง ----------
+const exportXlsx = path.join(DATA_DIR, 'exports', 'orders-2026-10-14.xlsx');
+const exportCsv = path.join(DATA_DIR, 'exports', 'orders-2026-10-14.csv');
+const backupJson = path.join(DATA_DIR, 'backups', 'orders-2026-10-14.json');
+check('เก็บ Excel สำเนาไว้ใน data/exports', fs.existsSync(exportXlsx) && fs.statSync(exportXlsx).size > 1000, exportXlsx);
+check('เก็บ CSV สำเนาไว้ใน data/exports', fs.existsSync(exportCsv) && fs.statSync(exportCsv).size > 100, exportCsv);
+let backup = null;
+try {
+  backup = JSON.parse(fs.readFileSync(backupJson, 'utf8'));
+} catch {
+  backup = null;
+}
+check('สำรอง JSON ไว้ใน data/backups', Boolean(backup), backupJson);
+check(
+  'สำรอง JSON มีช่วงวันที่ จำนวน และรายการครบ',
+  backup?.range?.startKey === '2026-10-14' &&
+    backup?.range?.endKey === '2026-10-14' &&
+    backup?.orderCount === 30 &&
+    Array.isArray(backup?.orders) &&
+    backup.orders.length === 30 &&
+    typeof backup?.generatedAt === 'string',
+  JSON.stringify({ range: backup?.range, count: backup?.orderCount, generatedAt: backup?.generatedAt }),
+);
+const manualCopy = saveLocalCopies({
+  fileBase: 'manual-check',
+  xlsx: Buffer.from('fake-xlsx'),
+  csv: 'a,b\r\n1,2',
+  startKey: '2026-01-01',
+  endKey: '2026-01-01',
+  label: 'test',
+  orders: [{ orderNo: 1 }],
+});
+check(
+  'saveLocalCopies คืนพาธไฟล์ที่เขียนจริง',
+  manualCopy.xlsx === path.join(DATA_DIR, 'exports', 'manual-check.xlsx') &&
+    manualCopy.csv === path.join(DATA_DIR, 'exports', 'manual-check.csv') &&
+    manualCopy.backup === path.join(DATA_DIR, 'backups', 'manual-check.json'),
+  JSON.stringify(manualCopy),
+);
+check('ไฟล์จาก saveLocalCopies มีอยู่จริง', fs.existsSync(manualCopy.xlsx) && fs.existsSync(manualCopy.backup));
 
 // ---------- คำสั่ง /สรุปยอด (เช็คย้อนหลัง) ----------
 function summaryCommandInteraction({ staff = false, date = null, period = null } = {}) {
@@ -856,6 +958,100 @@ check(
   JSON.stringify(calls.map((c) => c[0])),
 );
 check('วันที่ผิด → ไม่ส่งสรุป', !calls.some((c) => c[0] === 'logSend'));
+
+// ---------- คำสั่ง /ตรวจยอด ----------
+function auditCommandInteraction({ staff = false, date = null, period = null } = {}) {
+  return {
+    isChatInputCommand: () => true,
+    commandName: AUDIT_COMMAND_NAME,
+    options: { getString: (name) => (name === 'ช่วง' ? period : date) },
+    user: { id: 'u1' },
+    member: { id: 'u1', roles: { cache: { some: () => false } } },
+    memberPermissions: { has: (flag) => staff && (flag === 8n || flag === 16n) },
+    reply: mkReply('reply'),
+    deferReply: mkReply('deferReply'),
+    editReply: mkReply('editReply'),
+    client: client(),
+  };
+}
+
+check('ชื่อคำสั่งคือ /ตรวจยอด', AUDIT_COMMAND_NAME === 'ตรวจยอด');
+check('ตรวจวันที่ของ /ตรวจยอด ถูกต้อง', normalizeAuditDayKey('2026-10-14') === '2026-10-14');
+check('วันที่ของ /ตรวจยอด ผิดรูปแบบถูกปฏิเสธ', normalizeAuditDayKey('14/10/2026') === null);
+
+const auditSample = analyzeOrders([
+  { orderNo: 1, createdAt: '2026-10-14T10:00:00Z', amount: 100, expected: 100, priceMatch: true, slipWarnings: [], transfer: { transRef: 'REF0' } },
+  { orderNo: 2, createdAt: '2026-10-14T11:00:00Z', amount: 50, expected: 100, priceMatch: false, slipWarnings: ['ยอดไม่ตรง'] },
+  { orderNo: 2, createdAt: '', amount: null, expected: null },
+  { orderNo: 4, createdAt: '2026-10-14T12:00:00Z', amount: 100, expected: 100, priceMatch: true, transfer: { transRef: 'REF1' } },
+  { orderNo: 5, createdAt: '2026-10-14T13:00:00Z', amount: 100, expected: 100, priceMatch: true, transfer: { transRef: 'REF1' } },
+]);
+check('ตรวจยอด: นับจำนวนออเดอร์ถูก', auditSample.count === 5, String(auditSample.count));
+check('ตรวจยอด: รวมยอดจากสลิปถูก', auditSample.totalAmount === 350, String(auditSample.totalAmount));
+check('ตรวจยอด: รวมยอดที่ควรได้ถูก', auditSample.expectedSum === 400, String(auditSample.expectedSum));
+check(
+  'ตรวจยอด: นับผลตรวจแยกสถานะถูก',
+  auditSample.results.ok === 3 && auditSample.results.mismatch === 1 && auditSample.results.pending === 1,
+  JSON.stringify(auditSample.results),
+);
+check('ตรวจยอด: จับออเดอร์ไม่มียอดที่ควรได้', auditSample.missingExpected.includes('0002') || auditSample.missingExpected.includes('0003'), JSON.stringify(auditSample.missingExpected));
+check('ตรวจยอด: จับยอดไม่ตรง', auditSample.amountMismatch.includes('0002'), JSON.stringify(auditSample.amountMismatch));
+check('ตรวจยอด: จับรายการไม่มีวันที่', auditSample.missingDate.includes('0002'), JSON.stringify(auditSample.missingDate));
+check('ตรวจยอด: จับเลขออเดอร์ซ้ำ', auditSample.duplicateOrderNos.includes('0002'), JSON.stringify(auditSample.duplicateOrderNos));
+check(
+  'ตรวจยอด: จับเลขอ้างอิงซ้ำ',
+  auditSample.duplicateTransRefs.some((v) => v.startsWith('REF1')),
+  JSON.stringify(auditSample.duplicateTransRefs),
+);
+check('ตรวจยอด: รู้ว่ามีปัญหา', auditSample.hasProblems === true);
+check(
+  'ตรวจยอด: ข้อมูลสะอาดไม่ฟ้องปัญหา',
+  analyzeOrders([
+    { orderNo: 1, createdAt: '2026-10-14T10:00:00Z', amount: 100, expected: 100, priceMatch: true, transfer: { transRef: 'X1' } },
+  ]).hasProblems === false,
+);
+const auditEmbed = buildAuditEmbed({ label: '2026-10-14', report: auditSample }).toJSON();
+const auditEmbedText = JSON.stringify(auditEmbed);
+check('การ์ดตรวจยอดมีหัวข้อและช่วงเวลา', auditEmbed.title.includes('ตรวจยอด') && auditEmbed.title.includes('2026-10-14'), auditEmbed.title);
+check(
+  'การ์ดตรวจยอดเตือนเมื่อพบปัญหา',
+  auditEmbedText.includes('⚠️') && auditEmbedText.includes('เลขออเดอร์ซ้ำ'),
+  auditEmbedText.slice(0, 200),
+);
+
+calls.length = 0;
+check('ผู้ใช้ทั่วไปเรียก /ตรวจยอด ไม่ได้', (await handleAuditCommand(auditCommandInteraction())) === true);
+check(
+  'ผู้ใช้ทั่วไปเห็นข้อความเฉพาะทีมงาน (ตรวจยอด)',
+  calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64 && /ทีมงาน/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ผู้ใช้ทั่วไปไม่ทำให้เกิดการส่งสรุป (ตรวจยอด)', !calls.some((c) => c[0] === 'logSend'));
+
+calls.length = 0;
+check(
+  'ทีมงานเรียก /ตรวจยอด ได้',
+  (await handleAuditCommand(auditCommandInteraction({ staff: true, date: '2026-10-14' }))) === true,
+);
+check('ตรวจยอดตอบแบบส่วนตัว (ephemeral)', calls.some((c) => c[0] === 'deferReply' && c[1]?.flags === 64), JSON.stringify(calls.map((c) => c[0])));
+const auditReply = calls.find((c) => c[0] === 'editReply')?.[1];
+check(
+  'ตรวจยอดตอบกลับเป็นการ์ดผลตรวจ',
+  Array.isArray(auditReply?.embeds) && auditReply.embeds.length === 1,
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('ตรวจยอดไม่ส่งข้อความเข้า log', !calls.some((c) => c[0] === 'logSend'));
+
+calls.length = 0;
+check(
+  'ตรวจยอด: วันที่ผิด → จบและแจ้งรูปแบบ',
+  (await handleAuditCommand(auditCommandInteraction({ staff: true, date: '14/10/2026' }))) === true,
+);
+check(
+  'ตรวจยอด: วันที่ผิด → แจ้ง YYYY-MM-DD',
+  calls.some((c) => c[0] === 'reply' && /YYYY-MM-DD/.test(c[1]?.content || '')),
+  JSON.stringify(calls.map((c) => c[0])),
+);
 
 // ---------- สรุปรายสัปดาห์ / รายเดือน ----------
 check(

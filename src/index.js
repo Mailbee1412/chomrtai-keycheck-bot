@@ -18,6 +18,11 @@ import {
   summaryCommandJSON,
   handleSummaryCommand,
 } from './features/shop/summaryCommand.js';
+import {
+  AUDIT_COMMAND_NAME,
+  auditCommandJSON,
+  handleAuditCommand,
+} from './features/shop/auditCommand.js';
 
 const DEBUG_LOG = path.join(process.cwd(), 'data', 'debug.log');
 function dlog(...args) {
@@ -83,7 +88,7 @@ acquireLock();
 async function registerCommands() {
   try {
     const rest = new REST({ version: '10' }).setToken(config.token);
-    const body = [priceCommandJSON(), summaryCommandJSON()];
+    const body = [priceCommandJSON(), summaryCommandJSON(), auditCommandJSON()];
     if (config.guildId) {
       await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body });
       console.log(`[commands] ลงทะเบียนคำสั่งในกิลด์ ${config.guildId} แล้ว`);
@@ -142,6 +147,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand?.() && interaction.commandName === SUMMARY_COMMAND_NAME) {
       const summaryHandled = await handleSummaryCommand(interaction);
       dlog('summary handled =', summaryHandled);
+      return;
+    }
+    if (interaction.isChatInputCommand?.() && interaction.commandName === AUDIT_COMMAND_NAME) {
+      const auditHandled = await handleAuditCommand(interaction);
+      dlog('audit handled =', auditHandled);
       return;
     }
     const handled = await handleSupportFormInteraction(interaction);

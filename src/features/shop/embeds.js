@@ -80,13 +80,52 @@ export function formatMoney(amount) {
   return `${Number(amount || 0).toLocaleString('en-US')} ${config.shop.currencySymbol}`;
 }
 
+const THAI_MONTHS = {
+  'ม.ค.': 1,
+  'ก.พ.': 2,
+  'มี.ค.': 3,
+  'เม.ย.': 4,
+  'พ.ค.': 5,
+  'มิ.ย.': 6,
+  'ก.ค.': 7,
+  'ส.ค.': 8,
+  'ก.ย.': 9,
+  'ต.ค.': 10,
+  'พ.ย.': 11,
+  'ธ.ค.': 12,
+};
+
+// อ่านวันที่แบบไทย เช่น "15 ต.ค. 69 20:39 น." (พ.ศ. 2 หลัก/4 หลัก) — คืน null ถ้าไม่เข้ารูปแบบ
+export function parseThaiDateTime(input) {
+  const match = String(input || '').match(/^(\d{1,2})\s+(\S+?)\s+(\d{2,4})\s+(\d{1,2}):(\d{2})/u);
+  if (!match) return null;
+  const [, dd, monthText, yy, hh, mi] = match;
+  const wanted = monthText.replace(/\./g, '');
+  const month = Object.entries(THAI_MONTHS).find(([name]) => name.replace(/\./g, '') === wanted)?.[1];
+  if (!month) return null;
+  const day = Number(dd);
+  const hour = Number(hh);
+  const minute = Number(mi);
+  if (day < 1 || day > 31 || hour > 23 || minute > 59) return null;
+  let year = Number(yy);
+  if (year < 100) year += 2500;
+  if (year > 2400) year -= 543;
+  // ข้อความไทยถือเป็นเวลาไทย (UTC+7) เสมอ
+  const epoch = Date.UTC(year, month - 1, day, hour, minute) - 7 * 3600000;
+  const date = new Date(epoch);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function formatDateTime(iso) {
+  const parsed = iso instanceof Date ? iso : new Date(iso);
+  const date = Number.isNaN(parsed.getTime()) ? parseThaiDateTime(iso) : parsed;
+  if (!date) return String(iso);
   try {
     return new Intl.DateTimeFormat('th-TH', {
       timeZone: config.shop.timezone,
       dateStyle: 'short',
       timeStyle: 'short',
-    }).format(new Date(iso));
+    }).format(date);
   } catch {
     return String(iso);
   }
@@ -290,6 +329,7 @@ export function buildDailySummaryEmbed({ dayKey, orders = [], title = null, foot
       { name: 'ยอดรวม (จากสลิป)', value: formatMoney(total), inline: true },
       { name: 'จำนวนออเดอร์', value: `${orders.length}`, inline: true },
       { name: 'ยังไม่แนบสลิป', value: `${pending}`, inline: true },
+      { name: 'ข้อมูล ณ', value: formatDateTime(new Date().toISOString()), inline: true },
     );
 
   if (!orders.length) {

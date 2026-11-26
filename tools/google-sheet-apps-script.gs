@@ -2,23 +2,28 @@
  * Google Sheet สำหรับสรุปยอด ChomRtai
  * ------------------------------------------------------------
  * วิธีติดตั้ง (ครั้งเดียว):
- *   1. เปิด Google Sheet เปล่า → เมนู Extensions → Apps Script
- *   2. ลบโค้ดเดิมทั้งหมด แล้ววางโค้ดไฟล์นี้ลงไป → บันทึก
- *   3. ถ้าตั้ง SHOP_GSHEET_SECRET ใน .env ให้ใส่รหัสเดียวกันในบรรทัด SECRET ด้านล่าง
- *      (ถ้าไม่ตั้ง ให้ปล่อย SECRET = '' ไว้)
- *   4. Deploy → New deployment → Web app
- *        Execute as: Me
- *        Who has access: Anyone
- *      → คัดลอก URL ที่ได้ไปใส่ SHOP_GSHEET_WEBHOOK_URL ใน .env
- *   5. เอา URL หน้าชีต (https://docs.google.com/spreadsheets/d/...) ไปใส่
- *      SHOP_GSHEET_SHEET_URL เพื่อให้บอทส่งลิงก์เข้าแชท
- *   6. แชร์ชีต: Anyone with the link → Viewer (คนในแชทต้องเปิดได้)
- *   7. ทดสอบ: เปิด URL Web app ในเบราว์เซอร์ ต้องเห็น {"ok":true,...}
+ * วิธี A (ปกติ): เปิดชีต → Extensions → Apps Script → วางโค้ด → Deploy
+ * วิธี B (ถ้ากด Apps Script แล้วขึ้น "unable to open the file"):
+ *   1. เปิด https://script.google.com → New project → วางโค้ดไฟล์นี้ → บันทึก
+ *   2. แก้ค่า SHEET_ID ด้านล่างให้เป็น ID ของชีต (ตัวกลางระหว่าง /d/ กับ /edit)
+ *   3. Deploy → New deployment → Web app (Execute as: Me / Who has access: Anyone)
+ *      → เอา URL /exec ใส่ SHOP_GSHEET_WEBHOOK_URL ใน .env
+ *   ※ วิธี B ใช้ได้แม้เปิด Apps Script จากในชีตไม่ได้ (สคริปต์จะ openById แทน)
  *
- * หมายเหตุ: ไฟล์นี้ไม่มีความลับฝังอยู่ (รหัสใส่ตอนติดตั้งเอง)
+ * ขั้นตอนร่วม:
+ *   - ตั้ง SHOP_GSHEET_SECRET ให้ตรงกับบรรทัด SECRET ด้านล่าง (ปล่อยว่าง = ไม่ตรวจ)
+ *   - ใส่ลิงก์ชีตใน SHOP_GSHEET_SHEET_URL เพื่อให้บอทส่งลิงก์เข้าแชท
+ *   - แชร์ชีต: Anyone with the link → Viewer (คนในแชทต้องเปิดได้)
+ *   - ทดสอบ: เปิด URL Web app ในเบราว์เซอร์ ต้องเห็น {"ok":true,...}
+ *
+ * หมายเหตุ: ID ชีตและรหัสลับไม่ได้ฝังมาในไฟล์นี้ (ใส่ตอนติดตั้งเอง)
  */
 
 const SECRET = ''; // ใส่รหัสเดียวกับ SHOP_GSHEET_SECRET (ปล่อยว่าง = ไม่ตรวจรหัส)
+
+// ใช้เฉพาะกรณีสร้างโปรเจกต์ standalone ที่ script.google.com (วิธี B)
+// ตัวอย่าง: https://docs.google.com/spreadsheets/d/<ใส่ตรงนี้>/edit
+const SHEET_ID = '1mK1Yk3gz5ZppihYTBfHFusRM7CfHDlFD8GTHX6nJ0Uw';
 
 const TAB_ORDERS = 'ออเดอร์';
 const TAB_SUMMARY = {
@@ -81,8 +86,15 @@ function thaiTime(iso) {
   return Utilities.formatDate(d, 'Asia/Bangkok', 'dd/MM/yy HH:mm');
 }
 
-function getSheet(name, headers) {
+function getSpreadsheet() {
+  if (SHEET_ID) return SpreadsheetApp.openById(SHEET_ID);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('ไม่พบชีต — ใส่ SHEET_ID ในสคริปต์ หรือเปิด Apps Script จากในชีต');
+  return ss;
+}
+
+function getSheet(name, headers) {
+  const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
   if (sheet.getLastRow() === 0 || sheet.getRange(1, 1).getValue() === '') {

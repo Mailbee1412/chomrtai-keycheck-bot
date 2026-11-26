@@ -299,8 +299,9 @@ function beautifySheet() {
     return 1;
   }
 
-  function tidyOrders(sheet) {
-    sheet.setFrozenColumns(2);
+  function tidyOrders(sheet, freezeCols) {
+    // แท็บตัวอย่างมีเซลล์ผสานข้าม A:U → ตรึงคอลัมน์จะ error ให้ตรึงเฉพาะแท็บออเดอร์
+    sheet.setFrozenColumns(freezeCols || 0);
     const last = realLastRow(sheet);
     if (last < 2) return;
     const all = sheet.getRange(2, 1, last - 1, ORDER_HEADERS.length);
@@ -503,7 +504,7 @@ function beautifySheet() {
       sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
     }
     colorRules(sheet, ORDER_HEADERS.length);
-    tidyOrders(sheet);
+    tidyOrders(sheet, name === TAB_ORDERS ? 2 : 0);
     if (name === 'ตัวอย่าง') {
       paintSample(sheet);
       writeGuide(sheet);

@@ -84,7 +84,6 @@ const KEY_PRODUCT_RULES = [
   { name: 'Cosmo', emoji: '🍷', test: (f) => f.claude && f.gemini },
   { name: 'Angel Shot', emoji: '🍸', test: (f) => f.claude },
   { name: 'Long Island', emoji: '🥃', test: (f) => f.gemini && f.pro && f.flash },
-  { name: 'Midnight Kiss', emoji: '🌙', test: (f) => f.gemini && f.flash && f.high },
   { name: 'Margarita', emoji: '🍹', test: (f) => f.gemini && f.flash },
   { name: 'Long Island', emoji: '🥃', test: (f) => f.gemini },
 ];

@@ -11,18 +11,6 @@ const MIGRATIONS_FILE = path.join(DATA_DIR, 'shop-migrations.json');
 // เลขลำดับออเดอร์เริ่มที่ 0 (ตัวแรกที่ออกคือ 0001)
 const ORDER_NUMBER_START = 0;
 
-const MIDNIGHT_KISS_PRODUCT = {
-  id: 'api-key-midnight-kiss',
-  parent: 'api-key',
-  name: '🌙 ◦ Midnight Kiss [ Gemini Flash High ]',
-  category: 'api-key',
-  type: 'key',
-  description: 'คีย์ API โมเดล Gemini Flash High พร้อมใช้งาน แจ้งทีมงานหลังชำระเงินเพื่อรับคีย์',
-  price: 39,
-  pricePer: 100,
-  enabled: true,
-};
-
 const DEFAULT_PRODUCTS = [
   {
     id: 'api-key',
@@ -54,7 +42,6 @@ const DEFAULT_PRODUCTS = [
     pricePer: 100,
     enabled: true,
   },
-  MIDNIGHT_KISS_PRODUCT,
   {
     id: 'api-key-angel-shot',
     parent: 'api-key',
@@ -140,12 +127,8 @@ function writeJson(file, data) {
 }
 
 // ---------- สินค้า / บริการ ----------
-// สินค้าที่เพิ่มทีหลัง — เติมเข้าชุดข้อมูลเดิมครั้งเดียว (ไม่ทับของที่ร้านแก้ไว้)
-const PRODUCT_MIGRATIONS = [
-  { key: '2026-11-midnight-kiss', product: MIDNIGHT_KISS_PRODUCT },
-  // ชุดข้อมูลที่เคยเติมไปก่อนตั้งราคา (price = null) → ตั้งให้เท่า Margarita
-  { key: '2026-11-midnight-kiss-price', product: MIDNIGHT_KISS_PRODUCT, priceIfEmpty: 39 },
-];
+// ไม่มีสินค้าที่ต้องเติมทีหลังในตอนนี้ (Midnight Kiss ถูกลบออกจากร้านแล้ว)
+const PRODUCT_MIGRATIONS = [];
 
 function applyProductMigrations() {
   const done = readJson(MIGRATIONS_FILE, []);

@@ -231,9 +231,6 @@ function createSampleSheet() {
     ['SAMPLE-0001', '0001', '2026-11-26', '19:30', '19:35', '1234567890', 'ลูกค้าตัวอย่าง',
       '🍹 ◦ Margarita [ Gemini Flash ล้วน ]', 'api-key-margarita', 100, 39, 100, 39, 39,
       '✅ ตรง', 'ตรง', '', 'SAMPLE-REF-001', '', 'ไม่', '2026-11-26T12:00:00.000Z'],
-    ['SAMPLE-0002', '0002', '2026-11-26', '19:42', '', '1234567890', 'ลูกค้าตัวอย่าง',
-      '🌙 ◦ Midnight Kiss [ Gemini Flash High ]', 'api-key-midnight-kiss', 100, 39, 100, 39, '',
-      '🕓 ยังไม่แนบสลิป', '', '', '', '', 'ไม่', '2026-11-26T12:05:00.000Z'],
     ['SAMPLE-0003', '0003', '2026-11-26', '19:50', '19:52', '1234567890', 'ลูกค้าตัวอย่าง',
       '🍷 ◦ Cosmo [ โมเดลรวม Gemini / Claude ]', 'api-key-cosmo', 200, 79, 100, 158, 79,
       '⚠️ ไม่ตรง', 'ไม่ตรง', 'ตัวอย่าง: จ่ายไม่ตรงที่ควรได้', 'SAMPLE-REF-003', '', 'ไม่', '2026-11-26T12:10:00.000Z'],
@@ -316,4 +313,28 @@ function beautifySheet() {
   });
 
   return 'beautified';
+}
+
+// ลบ Midnight Kiss ออกจากชีตทั้งหมด (แท็บตัวอย่าง/ออเดอร์) แล้วจัดรูปแบบให้ด้วย
+// เรียกครั้งเดียวจาก Apps Script editor — ไม่ต้อง Deploy
+function removeMidnightKiss() {
+  const ss = getSpreadsheet();
+  let removed = 0;
+  ['ตัวอย่าง', TAB_ORDERS].forEach((name) => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    const n = sheet.getLastRow() - 1;
+    const keys = sheet.getRange(2, 1, n, 2).getValues();
+    const products = sheet.getRange(2, 8, n, 2).getValues();
+    for (let i = n - 1; i >= 0; i -= 1) {
+      const text = [keys[i][0], keys[i][1], products[i][0], products[i][1]].join(' ');
+      if (/midnight/i.test(text)) {
+        sheet.deleteRow(i + 2);
+        removed += 1;
+      }
+    }
+  });
+  const formatted = beautifySheet();
+  Logger.log('removeMidnightKiss removed=' + removed + ' format=' + formatted);
+  return 'ลบ Midnight Kiss ' + removed + ' แถว / ' + formatted;
 }

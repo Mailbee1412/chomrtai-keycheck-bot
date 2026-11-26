@@ -109,10 +109,7 @@ check(
   detectKeyProduct(['[次]gemini-3.1-pro-preview', '[次]gemini-3.8-flash'])?.name === 'Long Island',
 );
 check('ชนิดคีย์: Gemini Flash = Margarita', detectKeyProduct(['gemini-2.5-flash'])?.name === 'Margarita');
-check(
-  'ชนิดคีย์: Gemini Flash High = Midnight Kiss',
-  detectKeyProduct(['[次]gemini-3-flash-high'])?.name === 'Midnight Kiss',
-);
+check('ชนิดคีย์: Gemini Flash High = Margarita', detectKeyProduct(['[次]gemini-3-flash-high'])?.name === 'Margarita');
 check(
   'ชนิดคีย์: Gemini Pro + Flash High ยังเป็น Long Island',
   detectKeyProduct(['gemini-3.1-pro-preview', 'gemini-3-flash-high'])?.name === 'Long Island',

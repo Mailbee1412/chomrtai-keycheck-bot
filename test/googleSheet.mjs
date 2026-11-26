@@ -42,7 +42,7 @@ const base = {
   slipUrls: ['https://cdn.test/slip.png'],
 };
 const orders = [
-  { ...base, roomId: 'r1', orderNo: 1, dayKey: '2026-11-10', productName: 'Midnight Kiss', createdAt: '2026-11-10T11:00:00.000Z' },
+  { ...base, roomId: 'r1', orderNo: 1, dayKey: '2026-11-10', productName: 'Margarita', createdAt: '2026-11-10T11:00:00.000Z' },
   { ...base, roomId: 'r2', orderNo: 2, dayKey: '2026-11-10', productName: 'Cosmo', amount: 79, expected: 158, priceMatch: false },
   { roomId: 'r3', orderNo: 3, dayKey: '2026-11-10', productName: 'Theme', amount: null, slipUrls: [] },
 ];

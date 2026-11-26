@@ -223,10 +223,19 @@ const { DATA_DIR } = await import('../src/config.js');
 store.ensureSeeded();
 const products = store.listProducts({ onlyEnabled: true });
 const topProducts = store.listTopProducts({ onlyEnabled: true });
-check('มีบริการเริ่มต้น 9 รายการ (5 หลัก + 4 ย่อย)', products.length === 9, String(products.length));
+check('มีบริการเริ่มต้น 13 รายการ (5 หลัก + 4 คีย์ย่อย + 4 คอมมิชชันย่อย)', products.length === 13, String(products.length));
 check('มีบริการระดับบนสุด 5 รายการ', topProducts.length === 5, String(topProducts.length));
 check('ดึงบริการด้วย id ได้', store.getProduct('api-key')?.name === '🔑 ◦ API Key', String(store.getProduct('api-key')?.name));
 check('Api key เป็นกลุ่มที่มี 4 ตัวเลือกย่อย', store.getChildren('api-key').length === 4, String(store.getChildren('api-key').length));
+check('Commission Bot เปลี่ยนชื่อเป็น Sillytarvern', store.getProduct('commission-bot')?.name === '🧸 ◦ Commission Bot Sillytarvern', String(store.getProduct('commission-bot')?.name));
+check('Commission Bot เป็นกลุ่ม', store.getProduct('commission-bot')?.type === 'group', String(store.getProduct('commission-bot')?.type));
+check('Commission Bot มี 4 ตัวเลือกย่อย', store.getChildren('commission-bot').length === 4, String(store.getChildren('commission-bot').length));
+check(
+  'คอมมิชชันย่อยทั้ง 4 อ้าง parent + มีช่อง qrImage',
+  ['commission-bot-1', 'commission-bot-2', 'commission-bot-3', 'commission-bot-4'].every(
+    (id) => store.getProduct(id)?.parent === 'commission-bot' && 'qrImage' in store.getProduct(id),
+  ),
+);
 check('ตัวเลือกย่อยอ้าง parent', ['api-key-long-island', 'api-key-margarita', 'api-key-angel-shot', 'api-key-cosmo'].every((id) => store.getProduct(id)?.parent === 'api-key'));
 check('ไม่มีสินค้าที่ถูกลบ (Midnight Kiss)', !store.getProduct('api-key-midnight-kiss'), String(store.getProduct('api-key-midnight-kiss')?.name));
 
@@ -281,6 +290,7 @@ check('การ์ดมีโลโก้เซิร์ฟเวอร์', B
 check('การ์ดโชว์บริการหลัก (API Key)', panelDesc.includes('API Key') && panelDesc.includes('Theme') && panelDesc.includes('สอบถามเพิ่มเติม'), panelDesc.slice(0, 60));
 check('การ์ดไม่โชว์ตัวเลือกย่อย', !panelDesc.includes('Long Island'), panelDesc.slice(0, 80));
 check('การ์ดโชว์ชื่อบริการแบบมีจุด ◦ คั่น', panelDesc.includes('🔑 ◦ API Key') && panelDesc.includes('💬 ◦ สอบถามเพิ่มเติม'), panelDesc.slice(0, 120));
+check('การ์ดโชว์ชื่อ Commission Bot Sillytarvern', panelDesc.includes('Commission Bot Sillytarvern'), panelDesc.slice(0, 180));
 check('การ์ดไม่บอกราคา', !panelDesc.includes('฿'));
 const panelComp = JSON.stringify(panel?.[1]?.components || []);
 check('แผงมีเมนูเลือกบริการบนแผงเลย', panelComp.includes('shop:product'));
@@ -295,6 +305,15 @@ check('ขึ้นเมนูย่อยแบบ ephemeral', Boolean(subRepl
 const subComp = JSON.stringify(subReply?.[1]?.components || []);
 check('เมนูย่อยมี 4 ตัวเลือก', subComp.includes('api-key-long-island') && subComp.includes('api-key-cosmo') && subComp.includes('api-key-margarita'), subComp.slice(0, 80));
 check('กด Api key ไม่สร้างห้องทันที', !calls.some((c) => c[0] === 'channelCreate'));
+
+// ---------- กด Commission Bot → ขึ้นเมนูย่อย 4 บัญชี ----------
+calls.length = 0;
+check('กด Commission Bot สำเร็จ', (await handleShopInteraction(selectInteraction('shop:product', ['commission-bot']))) === true);
+const commissionSubReply = calls.find((c) => c[0] === 'reply');
+const commissionSubComp = JSON.stringify(commissionSubReply?.[1]?.components || []);
+check(' Commission ขึ้นเมนูย่อยแบบ ephemeral', commissionSubReply?.[1]?.flags === 64, JSON.stringify(calls.map((c) => c[0])));
+check('เมนูย่อย Commission มี 4 บัญชี', ['commission-bot-1', 'commission-bot-2', 'commission-bot-3', 'commission-bot-4'].every((id) => commissionSubComp.includes(id)), commissionSubComp.slice(0, 200));
+check('กด Commission ไม่สร้างห้องทันที', !calls.some((c) => c[0] === 'channelCreate'));
 
 // ---------- เลือกประเภทย่อย → สร้างห้อง ----------
 calls.length = 0;
@@ -1375,6 +1394,42 @@ check(
   /^order-\d{4}-inquiry-tester$/.test(inqRoom?.[1]?.name || ''),
   String(inqRoom?.[1]?.name),
 );
+config.shop.qrImagePath = '';
+
+// ---------- QR แยกต่อบริการย่อยคอมมิชชัน ----------
+const commissionQrTmp = path.join(os.tmpdir(), 'shop-commission-qr-test.png');
+const globalQrTmp = path.join(os.tmpdir(), 'shop-global-qr-test.png');
+for (const file of [commissionQrTmp, globalQrTmp]) fs.writeFileSync(file, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+const commissionChild = store.getProduct('commission-bot-1');
+const originalCommissionQr = commissionChild.qrImage;
+
+config.shop.qrImagePath = globalQrTmp;
+store.upsertProduct({ ...commissionChild, qrImage: commissionQrTmp });
+calls.length = 0;
+await handleShopInteraction(selectInteraction('shop:product', ['commission-bot-1']));
+const commissionSend = calls.find((c) => c[0] === 'roomSend');
+check(
+  'คอมย่อยแนบ QR ของบริการนั้น (ไม่ใช้ QR กลาง)',
+  commissionSend?.[1]?.files?.[0]?.name === 'qr-commission-bot-1.png',
+  JSON.stringify(commissionSend?.[1]?.files?.map((f) => f.name)),
+);
+check('ข้อความห้องบอกว่าเป็น QR ของบริการนี้', /QR ของบริการนี้/.test(commissionSend?.[1]?.content || ''), (commissionSend?.[1]?.content || '').slice(0, 160));
+const commissionRoom = calls.find((c) => c[0] === 'channelCreate');
+check('ชื่อห้องคอมย่อยใช้ชื่อย่อ commission-1', /^order-\d{4}-commission-1-tester$/.test(commissionRoom?.[1]?.name || ''), String(commissionRoom?.[1]?.name));
+
+store.upsertProduct({ ...store.getProduct('commission-bot-1'), qrImage: path.join(os.tmpdir(), 'shop-qr-missing.png') });
+calls.length = 0;
+await handleShopInteraction(selectInteraction('shop:product', ['commission-bot-1']));
+const fallbackSend = calls.find((c) => c[0] === 'roomSend');
+check('QR ของบริการหาย → ใช้ QR กลางแทน', fallbackSend?.[1]?.files?.[0]?.name === 'shop-qr.png', JSON.stringify(fallbackSend?.[1]?.files?.map((f) => f.name)));
+check('ข้อความห้องกลับมาบอก QR ร้าน', /QR ร้าน/.test(fallbackSend?.[1]?.content || ''), '');
+
+calls.length = 0;
+await handleShopInteraction(selectInteraction('shop:product', ['theme']));
+const themeWithGlobalQr = calls.find((c) => c[0] === 'roomSend');
+check('Theme ยังใช้ QR กลาง (ไม่ถูกคอมย่อยแก้)', themeWithGlobalQr?.[1]?.files?.[0]?.name === 'shop-qr.png', JSON.stringify(themeWithGlobalQr?.[1]?.files?.map((f) => f.name)));
+
+store.upsertProduct({ ...store.getProduct('commission-bot-1'), qrImage: originalCommissionQr });
 config.shop.qrImagePath = '';
 
 // ---------- ราคาต่อหน่วย (ตั้งผ่าน Discord) + เทียบยอดสลิป ----------

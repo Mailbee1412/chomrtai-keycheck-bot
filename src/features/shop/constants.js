@@ -2,7 +2,7 @@ export const CATEGORIES = [
   { value: 'api-key', label: 'Api key' },
   { value: 'theme', label: 'Theme' },
   { value: 'nitro-boost', label: 'Nitro + Boost' },
-  { value: 'commission-bot', label: 'Commission Bot' },
+  { value: 'commission-bot', label: 'Commission Bot Sillytarvern' },
 ];
 
 export function getCategoryLabel(value) {

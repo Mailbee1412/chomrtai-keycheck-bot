@@ -77,6 +77,11 @@ const SHORT_PRODUCT_IDS = {
   'api-key-angel-shot': 'angel-shot',
   'api-key-cosmo': 'cosmo',
   'api-key': 'api-key',
+  'commission-bot-1': 'commission-1',
+  'commission-bot-2': 'commission-2',
+  'commission-bot-3': 'commission-3',
+  'commission-bot-4': 'commission-4',
+  'commission-bot': 'commission',
 };
 
 function shortProductId(product) {
@@ -137,11 +142,11 @@ export async function postShopPanel(client) {
   if (sent) writeState({ channelId, messageId: sent.id });
 }
 
-// หาไฟล์รูป QR ร้าน (ถ้าตั้งค่า SHOP_QR_IMAGE_PATH ไว้และไฟล์มีจริง)
+// หาไฟล์รูป QR ของบริการ (เฉพาะคอมมิชชันย่อยมี qrImage ของตัวเอง)
+// ถ้าไม่ได้ตั้งหรือไฟล์หาย → ตกมาที่ QR กลาง SHOP_QR_IMAGE_PATH เหมือนเดิม
 // path สัมพัทธ์จะลองหาจากโฟลเดอร์ที่รันบอทก่อน แล้วค่อยหาจากโฟลเดอร์โปรเจกต์ (กันกรณีรันจากที่อื่นบนเซิร์ฟ)
-let qrMissingWarned = false;
-function resolveQrImage() {
-  const p = config.shop.qrImagePath;
+const warnedQrPaths = new Set();
+function findQrFile(p) {
   if (!p) return null;
   const candidates = path.isAbsolute(p)
     ? [p]
@@ -153,13 +158,18 @@ function resolveQrImage() {
       /* ลองตัวถัดไป */
     }
   }
-  if (!qrMissingWarned) {
-    qrMissingWarned = true;
-    console.warn(
-      `[shop] ไม่พบไฟล์รูป QR: ${p} — ห้องออเดอร์จะไม่แนบรูป (ตรวจ SHOP_QR_IMAGE_PATH ใน .env)`,
-    );
+  if (!warnedQrPaths.has(p)) {
+    warnedQrPaths.add(p);
+    console.warn(`[shop] ไม่พบไฟล์รูป QR: ${p} — จะลอง QR กลาง/ไม่แนบรูป`);
   }
   return null;
+}
+function resolveQrImage(product) {
+  const specific = String(product?.qrImage || '').trim();
+  const foundSpecific = specific ? findQrFile(specific) : null;
+  if (foundSpecific) return { path: foundSpecific, custom: true };
+  const foundGlobal = findQrFile(config.shop.qrImagePath);
+  return foundGlobal ? { path: foundGlobal, custom: false } : null;
 }
 
 // สร้างห้องออเดอร์แบบส่วนตัว (เห็นเฉพาะผู้ซื้อ + role ทีมงาน)
@@ -195,13 +205,19 @@ async function createServiceRoom(interaction, product) {
 
   const mention = buildStaffMention();
   const withSlip = product.type !== 'inquiry';
-  const qrPath = withSlip ? resolveQrImage() : null;
-  const body = buildServiceRoomContent(product, interaction.user, { withQr: Boolean(qrPath) });
+  const qr = withSlip ? resolveQrImage(product) : null;
+  const body = buildServiceRoomContent(product, interaction.user, {
+    withQr: Boolean(qr),
+    customQr: Boolean(qr?.custom),
+  });
   const payload = {
     content: `${mention ? mention + '\n' : ''}${body}`,
     components: [buildRoomButtons({ withSlip })],
   };
-  if (qrPath) payload.files = [new AttachmentBuilder(qrPath, { name: 'shop-qr.png' })];
+  if (qr) {
+    const name = qr.custom ? `qr-${product.id}.png` : 'shop-qr.png';
+    payload.files = [new AttachmentBuilder(qr.path, { name })];
+  }
   await channel.send?.(payload).catch((err) => console.warn(`[shop] send room failed: ${err.message}`));
 
   addOrder({

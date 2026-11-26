@@ -30,7 +30,7 @@ export function buildCatalogEmbed(products, { thumbnail = null } = {}) {
 }
 
 // ข้อความในห้องออเดอร์ที่สร้างให้ผู้ซื้อ
-export function buildServiceRoomContent(product, user, { withQr = false } = {}) {
+export function buildServiceRoomContent(product, user, { withQr = false, customQr = false } = {}) {
   const isInquiry = product?.type === 'inquiry';
   const lines = [
     isInquiry ? '✦ สอบถามทีมงาน · SHOP ✦' : '✦ ใบสั่งซื้อ · SHOP ✦',
@@ -66,7 +66,7 @@ export function buildServiceRoomContent(product, user, { withQr = false } = {}) 
     }
     lines.push(
       '✦ วิธีชำระเงิน',
-      ...(withQr ? [`${BULLET}สแกน QR ด้านล่างเพื่อโอนชำระเงิน`] : []),
+      ...(withQr ? [`${BULLET}สแกน QR ${customQr ? 'ของบริการนี้' : 'ร้าน'}ด้านล่างเพื่อโอนชำระเงิน`] : []),
       `${BULLET}กดปุ่ม "แนบสลิป" ด้านล่าง กรอกจำนวนที่ซื้อ + แนบรูปสลิป`,
       `${BULLET}บอทจะอ่านยอดจากสลิปและตรวจสอบให้อัตโนมัติ`,
       `${BULLET}ทีมงานจะตรวจสอบและดำเนินการให้เร็วที่สุด`,

@@ -276,12 +276,64 @@ function beautifySheet() {
       .setFontWeight('bold')
       .setFontColor('#ffffff')
       .setBackground('#3c3c3c')
-      .setWrap(true);
+      .setWrap(true)
+      .setVerticalAlignment('middle')
+      .setHorizontalAlignment('center');
+    sheet.setRowHeight(1, 34);
     sheet.setFrozenRows(1);
+    sheet.setHiddenGridlines(true);
   }
 
   function setWidths(sheet, widths) {
     widths.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+  }
+
+  // data validation ทำให้ getLastRow() ค้างที่แถวว่าง → ต้องหาแถวที่มีข้อมูลจริง
+  function realLastRow(sheet) {
+    const last = sheet.getLastRow();
+    if (last < 2) return Math.max(last, 1);
+    const values = sheet.getRange(2, 1, last - 1, 1).getValues().flat();
+    for (let i = values.length - 1; i >= 0; i -= 1) {
+      if (values[i] !== '' && values[i] !== null) return i + 2;
+    }
+    return 1;
+  }
+
+  function tidyOrders(sheet) {
+    sheet.setFrozenColumns(2);
+    const last = realLastRow(sheet);
+    if (last < 2) return;
+    const all = sheet.getRange(2, 1, last - 1, ORDER_HEADERS.length);
+    all.setVerticalAlignment('middle')
+      .setBorder(true, true, true, true, true, true, '#e6e6e6', SpreadsheetApp.BorderStyle.SOLID);
+    sheet.setRowHeights(2, last - 1, 28);
+    sheet.getRange(2, 10, last - 1, 5).setHorizontalAlignment('right');
+    sheet.getRange(2, 15, last - 1, 2).setHorizontalAlignment('center');
+    sheet.getRange(2, 20, last - 1, 1).setHorizontalAlignment('center');
+  }
+
+  function tidySummary(sheet) {
+    sheet.setFrozenColumns(2);
+    // ใส่กฎสีไว้ล่วงหน้า แม้ยังไม่มีแถวสรุป → พอบอทเขียนมาจะขึ้นสีทันที
+    const rule = (formula, bg, col) => SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(formula)
+      .setRanges([sheet.getRange(2, col, 1000, 1)])
+      .setBackground(bg)
+      .build();
+    sheet.setConditionalFormatRules([
+      rule('=$I2>0', '#d9ead3', 9),
+      rule('=$J2>0', '#f4cccc', 10),
+      rule('=$K2>0', '#fce5cd', 11),
+      rule('=$L2>0', '#fff2cc', 12),
+    ]);
+    const last = realLastRow(sheet);
+    if (last < 2) return;
+    const all = sheet.getRange(2, 1, last - 1, SUMMARY_HEADERS.length);
+    all.setVerticalAlignment('middle')
+      .setBorder(true, true, true, true, true, true, '#e6e6e6', SpreadsheetApp.BorderStyle.SOLID);
+    sheet.setRowHeights(2, last - 1, 28);
+    sheet.getRange(2, 3, last - 1, 10).setHorizontalAlignment('center');
+    sheet.getRange(2, 5, last - 1, 1).setFontColor('#b8860b');
   }
 
   function colorRules(sheet, lastCol) {
@@ -444,13 +496,14 @@ function beautifySheet() {
     styleHeader(sheet, ORDER_HEADERS.length);
     setWidths(sheet, orderWidths);
     sheet.getRange(1, 15).setNote('สีแถวอัตโนมัติ: เขียว=ตรง / แดง=ไม่ตรง / เหลือง=ยังไม่แนบสลิป / ส้ม=รอตรวจ');
-    const n = sheet.getLastRow() - 1;
+    const n = realLastRow(sheet) - 1;
     if (n > 0) {
       sheet.getRange(2, 8, n, 1).setWrap(true);
       sheet.getRange(2, 17, n, 3).setWrap(true);
       sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
     }
     colorRules(sheet, ORDER_HEADERS.length);
+    tidyOrders(sheet);
     if (name === 'ตัวอย่าง') {
       paintSample(sheet);
       writeGuide(sheet);
@@ -472,10 +525,13 @@ function beautifySheet() {
     sheet.setTabColor(tabColors[key]);
     styleHeader(sheet, SUMMARY_HEADERS.length);
     setWidths(sheet, [90, 180, 140, 140, 110, 110, 90, 110, 90, 90, 90, 100, 340, 150]);
-    const n = Math.max(sheet.getLastRow() - 1, 1);
-    sheet.getRange(2, 1, n, SUMMARY_HEADERS.length).setFontWeight('bold');
-    sheet.getRange(2, 13, n, 1).setWrap(true);
-    sheet.getRange(2, 5, n, 8).setNumberFormat('#,##0.00');
+    const n = realLastRow(sheet) - 1;
+    if (n > 0) {
+      sheet.getRange(2, 1, n, SUMMARY_HEADERS.length).setFontWeight('bold');
+      sheet.getRange(2, 13, n, 1).setWrap(true);
+      sheet.getRange(2, 5, n, 8).setNumberFormat('#,##0.00');
+    }
+    tidySummary(sheet);
   });
 
   return 'beautified';

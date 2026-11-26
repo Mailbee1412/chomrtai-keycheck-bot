@@ -215,3 +215,40 @@ function deleteTestRows() {
   Logger.log('deleteTestRows removed=' + removed);
   return removed;
 }
+
+// สร้างตารางตัวอย่างไว้ในแท็บแรก (ชื่อ "ตัวอย่าง") — เรียกครั้งเดียวจาก Apps Script editor
+function createSampleSheet() {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName('ตัวอย่าง');
+  if (!sheet) {
+    sheet = ss.getSheets()[0];
+    sheet.setName('ตัวอย่าง');
+  }
+  sheet.clear();
+
+  const headers = ORDER_HEADERS;
+  const sample = [
+    ['SAMPLE-0001', '0001', '2026-11-26', '19:30', '19:35', '1234567890', 'ลูกค้าตัวอย่าง',
+      '🍹 ◦ Margarita [ Gemini Flash ล้วน ]', 'api-key-margarita', 100, 39, 100, 39, 39,
+      '✅ ตรง', 'ตรง', '', 'SAMPLE-REF-001', '', 'ไม่', '2026-11-26T12:00:00.000Z'],
+    ['SAMPLE-0002', '0002', '2026-11-26', '19:42', '', '1234567890', 'ลูกค้าตัวอย่าง',
+      '🌙 ◦ Midnight Kiss [ Gemini Flash High ]', 'api-key-midnight-kiss', 100, 39, 100, 39, '',
+      '🕓 ยังไม่แนบสลิป', '', '', '', '', 'ไม่', '2026-11-26T12:05:00.000Z'],
+    ['SAMPLE-0003', '0003', '2026-11-26', '19:50', '19:52', '1234567890', 'ลูกค้าตัวอย่าง',
+      '🍷 ◦ Cosmo [ โมเดลรวม Gemini / Claude ]', 'api-key-cosmo', 200, 79, 100, 158, 79,
+      '⚠️ ไม่ตรง', 'ไม่ตรง', 'ตัวอย่าง: จ่ายไม่ตรงที่ควรได้', 'SAMPLE-REF-003', '', 'ไม่', '2026-11-26T12:10:00.000Z'],
+  ];
+
+  const lastCol = headers.length;
+  sheet.getRange(1, 1, 1, lastCol).setValues([headers]);
+  sheet.getRange(2, 1, sample.length, lastCol).setValues(sample);
+  sheet.getRange(1, 1, 1, lastCol)
+    .setFontWeight('bold')
+    .setBackground('#fff4cc')
+    .setWrap(true);
+  sheet.setFrozenRows(1);
+  sheet.setTabColor('#d4af37');
+  sheet.getRange(2, 10, sample.length, 5).setNumberFormat('#,##0.00');
+  sheet.autoResizeColumns(1, lastCol);
+  return 'sample created: ' + sample.length + ' rows';
+}

@@ -360,6 +360,7 @@ function beautifySheet() {
       'แถวออเดอร์ใหม่จะระบายสีเองอัตโนมัติตามผลตรวจ (ไม่ต้องมาจัดสีซ้ำ)',
       'ลูกค้าแจ้งปิดห้องได้ / ปุ่มปิดห้องเป็นของทีมงานเท่านั้น',
       'สรุปยอดดูที่แท็บ สรุปรายวัน · สรุปรายสัปดาห์ · สรุปรายเดือน (บอทอัปเดตเวลา 00:05)',
+      'กดไอคอนกรองที่แถวหัวตารางเพื่อเรียง/กรอง · ช่องผลตรวจ/ตรง-ไม่ตรง/ปิดห้องมี dropdown ให้เลือก',
     ];
     notes.forEach((text, i) => {
       const r = noteStart + 1 + i;
@@ -367,6 +368,51 @@ function beautifySheet() {
       cell.merge().setValue('• ' + text).setBackground('#f3f3f3').setWrap(true);
       sheet.setRowHeight(r, 24);
     });
+  }
+
+  function dataLastBeforeGuide(sheet) {
+    const last = sheet.getLastRow();
+    for (let r = 2; r <= last; r += 1) {
+      if (String(sheet.getRange(r, 1).getValue() || '').indexOf('วิธีใช้ชีต') >= 0) return r - 1;
+    }
+    return last;
+  }
+
+  function applyFilter(sheet, last) {
+    const old = sheet.getFilter();
+    if (old) old.remove();
+    if (last >= 1) sheet.getRange(1, 1, last, ORDER_HEADERS.length).createFilter();
+  }
+
+  function applyValidation(sheet, fromRow, toRow) {
+    if (toRow < fromRow) return;
+    const rules = [
+      { col: 15, values: ['✅ ตรง', '⚠️ ไม่ตรง', '🕓 ยังไม่แนบสลิป', '🔎 รอตรวจ'] },
+      { col: 16, values: ['ตรง', 'ไม่ตรง'] },
+      { col: 20, values: ['ใช่', 'ไม่'] },
+    ];
+    rules.forEach((rule) => {
+      sheet.getRange(fromRow, rule.col, toRow - fromRow + 1, 1)
+        .setDataValidation(SpreadsheetApp.newDataValidation()
+          .requireValueInList(rule.values, true)
+          .setAllowInvalid(true)
+          .setHelpText('เลือกจากรายการที่กำหนด เพื่อให้สี/การกรองทำงานถูกต้อง')
+          .build());
+    });
+  }
+
+  function cleanSummaryTestRows(sheet) {
+    const last = sheet.getLastRow();
+    if (last < 2) return 0;
+    const labels = sheet.getRange(2, 2, last - 1, 1).getValues();
+    let removed = 0;
+    for (let i = labels.length - 1; i >= 0; i -= 1) {
+      if (String(labels[i][0]) === 'เช็คระบบ (ลบได้)') {
+        sheet.deleteRow(i + 2);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   const orderWidths = [130, 60, 100, 90, 90, 120, 130, 240, 150, 80, 90, 90, 90, 90, 110, 80, 240, 150, 260, 70, 150];
@@ -385,6 +431,12 @@ function beautifySheet() {
     if (name === 'ตัวอย่าง') {
       paintSample(sheet);
       writeGuide(sheet);
+      const dataLast = dataLastBeforeGuide(sheet);
+      applyFilter(sheet, dataLast);
+      applyValidation(sheet, 2, dataLast);
+    } else {
+      applyFilter(sheet, Math.max(sheet.getLastRow(), 2));
+      applyValidation(sheet, 2, Math.max(sheet.getLastRow(), 200));
     }
   });
 
@@ -392,6 +444,7 @@ function beautifySheet() {
   Object.keys(TAB_SUMMARY).forEach((key) => {
     const sheet = ss.getSheetByName(TAB_SUMMARY[key]);
     if (!sheet) return;
+    cleanSummaryTestRows(sheet);
     sheet.setTabColor(tabColors[key]);
     styleHeader(sheet, SUMMARY_HEADERS.length);
     setWidths(sheet, [90, 180, 140, 140, 110, 110, 90, 110, 90, 90, 90, 100, 340, 150]);

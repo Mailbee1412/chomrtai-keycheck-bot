@@ -181,3 +181,37 @@ function upsertSummary(body) {
   }
   return result;
 }
+
+// ลบข้อมูลออเดอร์เทสออกจากชีต (เรียกครั้งเดียวจาก Apps Script editor)
+// วิธีใช้: เปิดโปรเจกต์ → เลือกฟังก์ชัน deleteTestRows ในช่อง dropdown → กด Run
+function deleteTestRows() {
+  const TEST_ROOM = '1569709679251296299';
+  const TEST_LABEL = '2026-11-10';
+  const ss = getSpreadsheet();
+  let removed = 0;
+
+  const orders = ss.getSheetByName(TAB_ORDERS);
+  if (orders && orders.getLastRow() > 1) {
+    const keys = orders.getRange(2, 1, orders.getLastRow() - 1, 1).getValues();
+    for (let i = keys.length - 1; i >= 0; i -= 1) {
+      if (String(keys[i][0]) === TEST_ROOM) {
+        orders.deleteRow(i + 2);
+        removed += 1;
+      }
+    }
+  }
+
+  const day = ss.getSheetByName(TAB_SUMMARY.day);
+  if (day && day.getLastRow() > 1) {
+    const labels = day.getRange(2, 2, day.getLastRow() - 1, 1).getValues();
+    for (let i = labels.length - 1; i >= 0; i -= 1) {
+      if (String(labels[i][0]) === TEST_LABEL) {
+        day.deleteRow(i + 2);
+        removed += 1;
+      }
+    }
+  }
+
+  Logger.log('deleteTestRows removed=' + removed);
+  return removed;
+}

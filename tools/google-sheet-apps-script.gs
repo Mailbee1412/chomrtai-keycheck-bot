@@ -430,6 +430,30 @@ function beautifySheet() {
       cell.merge().setValue('• ' + text).setBackground('#f3f3f3').setWrap(true);
       sheet.setRowHeight(r, 24);
     });
+
+    // วิธีใช้ทีละขั้น — วางต่อท้ายคำอธิบายเดิมในแท็บเดียวกัน
+    const stepStart = noteStart + notes.length + 2;
+    const stepHead = sheet.getRange(stepStart, 1, 1, ORDER_HEADERS.length);
+    stepHead.merge().setValue('🧭 วิธีใช้ทีละขั้น (ลูกค้า / ทีมงาน)')
+      .setBackground('#0b5394').setFontColor('#ffffff').setFontWeight('bold');
+    sheet.setRowHeight(stepStart, 30);
+
+    const steps = [
+      ['1️⃣ สั่งสินค้า', 'ใน Discord กดปุ่มหมวดสินค้า → เลือกบริการ → บอทสร้างห้อง order-xxxx-ชื่อย่อ-ผู้ใช้ ให้'],
+      ['2️⃣ โอน & แนบสลิป', 'โอนตามยอดในห้อง แล้วแนบสลิปในห้องนั้น (หรือใส่ลิงก์สลิปที่คอลัมน์ S ในชีต)'],
+      ['3️⃣ เช็คสีแถว', 'ดูแท็บ ออเดอร์: เขียว=ตรง / แดง=ไม่ตรง / เหลือง=ยังไม่แนบสลิป / ส้ม=รอตรวจ'],
+      ['4️⃣ รับคีย์', 'แถวขึ้น ✅ ตรงแล้ว ทีมงานส่งคีย์ให้ลูกค้าในห้องได้เลย'],
+      ['5️⃣ ปิดห้อง', 'ลูกค้าแจ้งปิดห้องได้ / ปุ่มปิดห้องเป็นของทีมงานเท่านั้น (คอลัมน์ T)'],
+      ['6️⃣ ดูสรุปยอด', 'แท็บ สรุปรายวัน / รายสัปดาห์ / รายเดือน อัปเดต 00:05 น. (รายสัปดาห์วันจันทร์)'],
+    ];
+    steps.forEach((s, i) => {
+      const r = stepStart + 1 + i;
+      const label = sheet.getRange(r, 1, 1, 3);
+      label.merge().setValue(s[0]).setBackground('#d9e2f3').setFontWeight('bold');
+      const detail = sheet.getRange(r, 4, 1, ORDER_HEADERS.length - 3);
+      detail.merge().setValue(s[1]).setWrap(true);
+      sheet.setRowHeight(r, 30);
+    });
   }
 
   function dataLastBeforeGuide(sheet) {

@@ -118,6 +118,15 @@ function upsertRows(sheet, headers, rows, keyOf) {
     if (k !== '') indexByKey.set(String(k), i + 2);
   });
 
+  // data validation อาจทำให้ getLastRow() ค้างที่แถวว่างท้าย ๆ → หาแถวว่างแรกจริง ๆ
+  let nextRow = last + 1;
+  for (let r = 2; r <= last; r += 1) {
+    if (keys[r - 2] === '') {
+      nextRow = r;
+      break;
+    }
+  }
+
   const fresh = [];
   let updated = 0;
   for (const row of rows) {
@@ -130,11 +139,11 @@ function upsertRows(sheet, headers, rows, keyOf) {
       updated += 1;
     } else {
       fresh.push(values);
-      indexByKey.set(key, last + fresh.length);
+      indexByKey.set(key, nextRow + fresh.length - 1);
     }
   }
   if (fresh.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, fresh.length, headers.length).setValues(fresh);
+    sheet.getRange(nextRow, 1, fresh.length, headers.length).setValues(fresh);
   }
   return { added: fresh.length, updated };
 }

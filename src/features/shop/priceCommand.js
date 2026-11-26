@@ -1,6 +1,6 @@
 import { EmbedBuilder, SlashCommandBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { config } from '../../config.js';
-import { listProducts, getProduct, setProductPrice, ensureSeeded } from './store.js';
+import { listProducts, getProduct, setProductPrice, ensureSeeded, getOrder, setOrderAgreedPrice } from './store.js';
 import { formatMoney } from './embeds.js';
 
 export const PRICE_COMMAND_NAME = 'ตั้งราคา';
@@ -18,9 +18,15 @@ function selectableProducts() {
 export function priceCommandJSON() {
   const builder = new SlashCommandBuilder()
     .setName(PRICE_COMMAND_NAME)
-    .setDescription('ตั้งหรือดูราคาต่อหน่วยของบริการ (ทีมงานเท่านั้น)')
+    .setDescription('ตั้งราคาบริการ หรือราคาที่ตกลงของห้องออเดอร์ (ทีมงานเท่านั้น)')
     .addNumberOption((opt) =>
-      opt.setName('price').setDescription('ราคาต่อหน่วย (บาท) — ไม่ใส่ = ดูราคา').setRequired(false).setMinValue(0),
+      opt.setName('price').setDescription('ราคา (บาท) — ไม่ใส่ = ดูราคา').setRequired(false).setMinValue(0),
+    )
+    .addChannelOption((opt) =>
+      opt
+        .setName('room')
+        .setDescription('ห้องออเดอร์ — ใส่เพื่อตั้งราคาที่ตกลงเฉพาะห้องนี้')
+        .setRequired(false),
     );
 
   const products = selectableProducts().slice(0, 25);
@@ -73,6 +79,36 @@ export async function handlePriceCommand(interaction) {
 
   const productId = interaction.options.getString('product', false);
   const priceArg = interaction.options.getNumber('price', false);
+  const room = interaction.options.getChannel?.('room', false) || null;
+
+  // โหมดตั้งราคาต่อห้อง — ใช้กับบริการที่ไม่มีเรตคงที่ (Theme / Commission Bot)
+  if (room) {
+    const order = getOrder(room.id);
+    if (!order) {
+      await interaction
+        .reply({ content: '❌ ไม่พบออเดอร์ในห้องนี้ (ต้องเป็นห้องที่บอทสร้างให้)', flags: MessageFlags.Ephemeral })
+        .catch(() => {});
+      return true;
+    }
+    if (priceArg == null) {
+      await replyWithEmbed(interaction, `🏷️ ราคาที่ตกลง · ${order.productName || order.productId || 'ออเดอร์'}`, [
+        `${BULLET}ห้อง : <#${room.id}>`,
+        `${BULLET}ราคาที่ตกลง : ${order.agreedPrice == null ? '— ยังไม่ตั้ง' : formatMoney(order.agreedPrice)}`,
+        `${BULLET}ยอดจากสลิป : ${order.amount == null ? '— ยังไม่แนบ' : formatMoney(order.amount)}`,
+        `${BULLET}ผลตรวจตอนนี้ : ${order.priceMatch == null ? 'รอตรวจ' : order.priceMatch ? '✅ ตรง' : '⚠️ ไม่ตรง'}`,
+      ]).catch(() => {});
+      return true;
+    }
+    const updated = setOrderAgreedPrice(room.id, priceArg);
+    await replyWithEmbed(interaction, '✅ ตั้งราคาที่ตกลงให้ห้องนี้แล้ว', [
+      `${BULLET}ห้อง : <#${room.id}>`,
+      `${BULLET}บริการ : ${updated.productName || updated.productId || '—'}`,
+      `${BULLET}ราคาที่ตกลง : ${formatMoney(updated.agreedPrice)}`,
+      `${BULLET}ผลตรวจตอนนี้ : ${updated.priceMatch == null ? 'รอสลิป' : updated.priceMatch ? '✅ ตรง' : '⚠️ ไม่ตรง'}`,
+      `${BULLET}ถ้าแนบสลิปไปแล้ว บอทเทียบยอดให้ทันที (ไม่ต้องแนบใหม่)`,
+    ]).catch(() => {});
+    return true;
+  }
 
   if (!productId) {
     const lines = selectableProducts().map(

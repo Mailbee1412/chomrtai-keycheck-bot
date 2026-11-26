@@ -191,6 +191,7 @@ export function buildSlipAlertNotice({
   order,
   amount,
   expected,
+  expectedSource = null,
   unitPrice,
   pricePer = 1,
   quantity,
@@ -213,7 +214,7 @@ export function buildSlipAlertNotice({
     `${BULLET}บริการ : ${order.productName || order.productId || 'ไม่ระบุ'}`,
     `${BULLET}ราคา : ${formatMoney(unitPrice)} / ${unit}`,
     `${BULLET}จำนวน : ${quantity} ${unit}`,
-    `${BULLET}ยอดที่ควรได้ : ${expected == null ? 'ไม่ระบุราคา' : formatMoney(expected)}`,
+    `${BULLET}ยอดที่ควรได้ : ${expected == null ? 'ไม่ระบุราคา' : formatMoney(expected)}${expectedSource === 'agreed' ? ' (ราคาที่ตกลง)' : ''}`,
     `${BULLET}ยอดจากสลิป : ${amount == null ? 'อ่านยอดไม่ได้' : formatMoney(amount)}`,
   ];
   if (transRef) lines.push(`${BULLET}เลขอ้างอิง : ${transRef}`);

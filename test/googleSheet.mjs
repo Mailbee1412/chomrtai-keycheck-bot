@@ -60,6 +60,10 @@ check('แถวออเดอร์: เลขที่ padded', row.orderNo =
 check('แถวออเดอร์: ผลตรง', row.checkLabel === '✅ ตรง' && row.checkKey === 'ok');
 check('แถวออเดอร์: รับเลขอ้างอิง/ลิงก์สลิป', row.transRef === 'REF1' && row.slipUrl === 'https://cdn.test/slip.png' && row.slipCount === 1);
 check('แถวออเดอร์: ไม่มีสลิป', buildSheetOrderRow(orders[2]).checkKey === 'pending');
+check(
+  'แถวออเดอร์: ระบุว่าราคามาจากราคาที่ตกลง',
+  buildSheetOrderRow({ ...orders[0], expectedSource: 'agreed' }).warnings.includes('ราคาที่ตกลง (ทีมตั้ง)'),
+);
 
 const summary = buildSheetSummary(orders);
 check('สรุป: ยอดรวม/จำนวน', summary.total === 118 && summary.orderCount === 3);

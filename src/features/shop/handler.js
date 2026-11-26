@@ -473,7 +473,10 @@ async function handleSlipSubmit(interaction) {
   const unitPrice = order?.unitPrice ?? product?.price ?? null;
   const pricePer =
     Number(order?.pricePer) > 0 ? Number(order.pricePer) : Number(product?.pricePer) > 0 ? Number(product.pricePer) : 1;
-  const expected = unitPrice != null ? (unitPrice / pricePer) * quantity : null;
+  // ราคาที่ทีมตั้งให้ห้องนี้มี precedence สูงกว่าเรตคงที่ของสินค้า
+  const agreedPrice = order?.agreedPrice != null ? Number(order.agreedPrice) : null;
+  const expected = agreedPrice != null ? agreedPrice : unitPrice != null ? (unitPrice / pricePer) * quantity : null;
+  const expectedSource = agreedPrice != null ? 'agreed' : expected != null ? 'price' : null;
   const priceMatch = expected != null && amount != null ? Math.abs(amount - expected) < 0.01 : null;
 
   // ตรวจสลิปปลอม/ซ้ำ/เก่า → เก็บเป็นข้อสังเกตให้ทีมงาน (ไม่บอกผู้ซื้อ)
@@ -506,6 +509,7 @@ async function handleSlipSubmit(interaction) {
     pricePer,
     quantity,
     expected,
+    expectedSource,
     priceMatch,
     slipWarnings: warnings,
   });
@@ -524,6 +528,7 @@ async function handleSlipSubmit(interaction) {
               order: order || { userId: interaction.user.id },
               amount,
               expected,
+              expectedSource,
               unitPrice,
               pricePer,
               quantity,

@@ -58,6 +58,9 @@ function num(value) {
 export function buildSheetOrderRow(order = {}) {
   const check = slipCheckStatus(order);
   const slipUrls = (Array.isArray(order.slipUrls) ? order.slipUrls : []).filter(Boolean);
+  const notes = [];
+  if (order.expectedSource === 'agreed') notes.push('ราคาที่ตกลง (ทีมตั้ง)');
+  if (Array.isArray(check.warnings)) notes.push(...check.warnings.filter(Boolean));
   return {
     roomId: order.roomId || '',
     orderNo: order.orderNo ? String(order.orderNo).padStart(4, '0') : '',
@@ -77,7 +80,7 @@ export function buildSheetOrderRow(order = {}) {
     priceMatch: order.priceMatch === true ? 'ตรง' : order.priceMatch === false ? 'ไม่ตรง' : '',
     checkKey: check.key,
     checkLabel: `${check.mark} ${check.label}`,
-    warnings: (check.warnings || []).join(' | '),
+    warnings: notes.join(' | '),
     transRef: order.transfer?.transRef || '',
     paidAt: order.transfer?.paidAt || '',
     slipCount: slipUrls.length,

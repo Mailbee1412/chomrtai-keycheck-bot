@@ -277,7 +277,29 @@ export function setOrderAmount(roomId, amount, slipUrls = [], transfer = null, p
     order.expected = priceInfo.expected == null ? null : Number(priceInfo.expected) || 0;
   }
   if (priceInfo.priceMatch !== undefined) order.priceMatch = priceInfo.priceMatch;
+  if (priceInfo.expectedSource !== undefined) order.expectedSource = priceInfo.expectedSource;
   if (priceInfo.slipWarnings !== undefined) order.slipWarnings = priceInfo.slipWarnings;
+  writeJson(ORDERS_FILE, list);
+  return order;
+}
+
+// ตั้ง "ราคาที่ตกลง" เฉพาะห้อง (บริการที่ไม่มีเรตคงที่ เช่น Theme / Commission Bot)
+// ถ้าแนบสลิปไปแล้วให้เทียบทันที ไม่ต้องให้ลูกค้าแนบสลิปซ้ำ
+export function setOrderAgreedPrice(roomId, price) {
+  const list = readOrders();
+  const order = list.find((o) => o.roomId === roomId);
+  if (!order) return null;
+  order.agreedPrice = price == null ? null : Math.max(0, Number(price) || 0);
+  if (order.agreedPrice != null) {
+    order.expected = order.agreedPrice;
+    order.expectedSource = 'agreed';
+    order.priceMatch =
+      order.amount == null ? null : Math.abs(Number(order.amount) - order.agreedPrice) < 0.01;
+  } else {
+    order.expected = null;
+    order.expectedSource = null;
+    order.priceMatch = null;
+  }
   writeJson(ORDERS_FILE, list);
   return order;
 }

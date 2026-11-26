@@ -1381,8 +1381,13 @@ config.shop.qrImagePath = '';
 const { handlePriceCommand, priceCommandJSON, PRICE_COMMAND_NAME } = await import('../src/features/shop/priceCommand.js');
 
 check('คำสั่งตั้งราคาถูกสร้างจากสินค้า', priceCommandJSON()?.name === PRICE_COMMAND_NAME, String(priceCommandJSON()?.name));
+check(
+  'คำสั่งตั้งราคามีช่องเลือกห้องออเดอร์',
+  (priceCommandJSON()?.options || []).some((o) => o.name === 'room' && o.type === 7),
+  JSON.stringify((priceCommandJSON()?.options || []).map((o) => o.name)),
+);
 
-function priceInteraction({ staff = false, administrator = false, product = null, price = null } = {}) {
+function priceInteraction({ staff = false, administrator = false, product = null, price = null, room = null } = {}) {
   return {
     isChatInputCommand: () => true,
     commandName: PRICE_COMMAND_NAME,
@@ -1390,7 +1395,11 @@ function priceInteraction({ staff = false, administrator = false, product = null
       roles: { cache: { some: () => staff } },
       permissions: { has: (flag) => (flag === 8n ? administrator : false) },
     },
-    options: { getString: () => product, getNumber: () => price },
+    options: {
+      getString: () => product,
+      getNumber: () => price,
+      getChannel: () => (room ? { id: room } : null),
+    },
     reply: mkReply('reply'),
   };
 }
@@ -1415,6 +1424,61 @@ check(
   calls.some((c) => c[0] === 'reply' && /ราคาบริการ/.test(JSON.stringify(c[1]))),
   JSON.stringify(calls.map((c) => c[0])),
 );
+
+// ---------- ราคาที่ตกลงต่อห้อง (บริการไม่มีเรตคงที่ เช่น Theme / Commission) ----------
+function agreedThemeOrder(roomId, amount = null) {
+  return {
+    roomId,
+    userId: 'u1',
+    userName: 'tester',
+    productId: 'theme',
+    productName: '🎨 ◦ Theme',
+    unitPrice: null,
+    pricePer: 1,
+    amount,
+    slipUrls: amount == null ? [] : ['https://cdn.test/slip.png'],
+    expected: null,
+    priceMatch: null,
+    dayKey: store.dayKey(),
+    createdAt: new Date().toISOString(),
+    closedAt: null,
+  };
+}
+store.addOrder(agreedThemeOrder('ch-agreed-room', 500));
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-room', price: 500 }));
+const agreedOk = store.getOrder('ch-agreed-room');
+check('ตั้งราคาห้อง: บันทึกราคาที่ตกลง', agreedOk?.agreedPrice === 500);
+check('ตั้งราคาห้อง: แนบสลิปแล้ว → เทียบตรงทันที', agreedOk?.expected === 500 && agreedOk?.priceMatch === true);
+check('ตั้งราคาห้อง: ตอบแบบ ephemeral', calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64));
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-room', price: 400 }));
+check('ตั้งราคาห้อง: ยอดไม่ตรง → ทำเครื่องหมายไม่ตรง', store.getOrder('ch-agreed-room')?.priceMatch === false);
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-room' }));
+check('ตั้งราคาห้อง: ไม่ใส่ price = ดูราคาที่ตกลง', calls.some((c) => c[0] === 'reply' && /ราคาที่ตกลง/.test(JSON.stringify(c[1]))));
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: false, room: 'ch-agreed-room', price: 999 }));
+check(
+  'ตั้งราคาห้อง: ไม่ใช่ทีมงานถูกปฏิเสธ',
+  store.getOrder('ch-agreed-room')?.agreedPrice === 400 &&
+    calls.some((c) => c[0] === 'reply' && /ทีมงาน/.test(JSON.stringify(c[1]))),
+);
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-no-order', price: 100 }));
+check('ตั้งราคาห้อง: ห้องไม่มีออเดอร์ → แจ้งไม่พบ', calls.some((c) => c[0] === 'reply' && /ไม่พบออเดอร์/.test(JSON.stringify(c[1]))));
+
+store.addOrder(agreedThemeOrder('ch-agreed-slip'));
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-slip', price: 250 }));
+calls.length = 0;
+await handleShopInteraction(slipSubmitInteraction('250', '1', 'ch-agreed-slip'));
+const agreedSlip = store.getOrder('ch-agreed-slip');
+check('สลิป Theme ใช้ราคาที่ตกลง (250) → ตรง', agreedSlip?.expected === 250 && agreedSlip?.priceMatch === true);
 
 // ---------- เทียบยอดสลิปกับ (ราคา ÷ ต่อกี่หน่วย × จำนวน) ----------
 store.addOrder({

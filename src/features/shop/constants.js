@@ -3,7 +3,6 @@ export const CATEGORIES = [
   { value: 'theme', label: 'Theme' },
   { value: 'nitro-boost', label: 'Nitro + Boost' },
   { value: 'commission-bot', label: 'Commission Bot' },
-  { value: 'vertex-email', label: 'Email สำหรับ Vertex' },
 ];
 
 export function getCategoryLabel(value) {

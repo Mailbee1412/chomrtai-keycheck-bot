@@ -223,8 +223,8 @@ const { DATA_DIR } = await import('../src/config.js');
 store.ensureSeeded();
 const products = store.listProducts({ onlyEnabled: true });
 const topProducts = store.listTopProducts({ onlyEnabled: true });
-check('มีบริการเริ่มต้น 10 รายการ (6 หลัก + 4 ย่อย)', products.length === 10, String(products.length));
-check('มีบริการระดับบนสุด 6 รายการ', topProducts.length === 6, String(topProducts.length));
+check('มีบริการเริ่มต้น 9 รายการ (5 หลัก + 4 ย่อย)', products.length === 9, String(products.length));
+check('มีบริการระดับบนสุด 5 รายการ', topProducts.length === 5, String(topProducts.length));
 check('ดึงบริการด้วย id ได้', store.getProduct('api-key')?.name === '🔑 ◦ API Key', String(store.getProduct('api-key')?.name));
 check('Api key เป็นกลุ่มที่มี 4 ตัวเลือกย่อย', store.getChildren('api-key').length === 4, String(store.getChildren('api-key').length));
 check('ตัวเลือกย่อยอ้าง parent', ['api-key-long-island', 'api-key-margarita', 'api-key-angel-shot', 'api-key-cosmo'].every((id) => store.getProduct(id)?.parent === 'api-key'));
@@ -240,13 +240,14 @@ check('สินค้าที่ถูกลบไม่กลับมาห�
 const seedCount = store.readProducts().length;
 store.ensureSeeded();
 check('migration ไม่เพิ่มซ้ำ', store.readProducts().length === seedCount, String(store.readProducts().length));
-check('มีบริการครบตามหมวด', ['theme', 'nitro-boost', 'commission-bot', 'vertex-email', 'inquiry'].every((id) => store.getProduct(id)));
+check('มีบริการครบตามหมวด', ['theme', 'nitro-boost', 'commission-bot', 'inquiry'].every((id) => store.getProduct(id)));
+check('ไม่มีหมวด Email สำหรับ Vertex', !store.getProduct('vertex-email'), String(store.getProduct('vertex-email')?.name));
 check('มีตัวเลือกสอบถามเพิ่มเติม', store.getProduct('inquiry')?.name === '💬 ◦ สอบถามเพิ่มเติม', String(store.getProduct('inquiry')?.name));
 
 // ---------- ui ----------
 const sel = buildProductSelect(topProducts).toJSON();
 check('เมนูเลือกบริการอยู่ใน action row', sel.type === 1 && sel.components?.[0]?.type === 3, JSON.stringify(sel.type));
-check('เมนูหลักมี 6 ตัวเลือก', (sel.components[0].options?.length || 0) === 6, String(sel.components[0].options?.length));
+check('เมนูหลักมี 5 ตัวเลือก', (sel.components[0].options?.length || 0) === 5, String(sel.components[0].options?.length));
 check('option อ้าง product id', sel.components[0].options[0].value === 'api-key');
 check('option ไม่บอกราคา', sel.components[0].options[0].description === undefined, String(sel.components[0].options[0].description));
 const subSel = buildProductSelect(store.getChildren('api-key'), 'เลือกประเภท').toJSON();

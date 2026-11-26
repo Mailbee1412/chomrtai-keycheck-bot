@@ -89,14 +89,6 @@ const DEFAULT_PRODUCTS = [
     enabled: true,
   },
   {
-    id: 'vertex-email',
-    name: '💌 ◦ Email สำหรับ Vertex',
-    category: 'vertex-email',
-    type: 'email',
-    description: 'อีเมลสำหรับสมัคร/ใช้งาน Google Vertex AI แจ้งจำนวนที่ต้องการได้ในห้อง',
-    enabled: true,
-  },
-  {
     id: 'inquiry',
     name: '💬 ◦ สอบถามเพิ่มเติม',
     category: 'inquiry',

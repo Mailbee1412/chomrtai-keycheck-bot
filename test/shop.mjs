@@ -1733,9 +1733,10 @@ check(
 config.shop.mentionStaff = true;
 
 // ---------- มัดจำ 50% ของคอมมิชชัน (จ่าย 2 งวด) ----------
+const { buildSheetSummary, buildSheetOrderRow } = await import('../src/services/googleSheet.js');
 config.shop.slipVerifyProvider = 'easyslip';
 config.shop.slipVerifyKey = 'test-key';
-const depositSlipMock = (amount, ref) =>
+const depositSlipMock = (amount, ref, date = '2026-11-27T10:00:00+07:00') =>
   easySlipMock({
     success: true,
     data: {
@@ -1743,7 +1744,7 @@ const depositSlipMock = (amount, ref) =>
       isDuplicate: false,
       rawSlip: {
         transRef: ref,
-        date: '2026-11-27T10:00:00+07:00',
+        date,
         amount: { amount },
         sender: { bank: { short: 'KBANK' }, account: { name: { th: 'นายทดสอบ ใจดี' } } },
         receiver: { bank: { short: 'SCB' }, account: { name: { th: 'ร้านสมฤทัย' } } },
@@ -1798,7 +1799,7 @@ check(
   depositCardText.slice(0, 300),
 );
 
-depositSlipMock(500, 'DEP-1');
+depositSlipMock(500, 'DEP-1', '2026-11-17T10:00:00+07:00');
 calls.length = 0;
 await handleShopInteraction(slipSubmitInteraction('500', '1', 'ch-deposit'));
 const dep1 = store.getOrder('ch-deposit');
@@ -1816,6 +1817,12 @@ check(
   JSON.stringify(calls.map((c) => c[0])),
 );
 check('สถานะหลังจ่ายมัดจำ = ตรง (มัดจำ)', slipCheckStatus(dep1).label === 'ตรง (มัดจำ)', slipCheckStatus(dep1).label);
+check('มัดจำ: วันที่เก็บมาจากสลิป (17 พ.ย. ไม่ใช่วันที่แนบ)', dep1?.payments?.[0]?.dayKey === '2026-11-17', String(dep1?.payments?.[0]?.dayKey));
+check(
+  'มัดจำโอนเมื่อ 10 วันก่อน → ไม่แจ้ง "สลิปเก่า"',
+  !calls.some((c) => c[0] === 'logSend' && /สลิปเก่า/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
 
 depositSlipMock(500, 'DEP-2');
 calls.length = 0;
@@ -1829,6 +1836,32 @@ check(
   'ข้อความในห้องแจ้งชำระครบแล้ว',
   calls.some((c) => c[0] === 'roomSlipSend' && /ชำระครบตามราคาที่ตกลงแล้ว/.test(JSON.stringify(c[1]))),
   JSON.stringify(calls.map((c) => c[0])),
+);
+check('งวดที่สอง: วันที่โอน = วันนี้', dep2?.payments?.[1]?.dayKey === '2026-11-27', String(dep2?.payments?.[1]?.dayKey));
+
+const depositDayRows = store
+  .listOrdersInRange('2026-11-17', '2026-11-27')
+  .filter((o) => o.roomId === 'ch-deposit');
+const splitRows = store.expandOrdersByPaymentDay(depositDayRows);
+check('สรุปยอด: ออเดอร์เดียวมี 2 งวด → แยกเป็น 2 แถว', splitRows.length === 2, String(splitRows.length));
+check(
+  'สรุปยอด: แยกยอด/วันที่โอนของแต่ละงวดถูกต้อง',
+  splitRows[0]?.amount === 500 &&
+    splitRows[0]?.dayKey === '2026-11-17' &&
+    splitRows[1]?.amount === 500 &&
+    splitRows[1]?.dayKey === '2026-11-27',
+  JSON.stringify(splitRows.map((r) => ({ amount: r.amount, dayKey: r.dayKey }))),
+);
+check('สรุปยอดช่วง 11 วัน = 1000', buildSheetSummary(splitRows).total === 1000, String(buildSheetSummary(splitRows).total));
+const day2Orders = store.listOrdersInRange('2026-11-27', '2026-11-27').filter((o) => o.roomId === 'ch-deposit');
+check('สรุปยอดวันที่ 27 พ.ย. เจอออเดอร์ที่เปิดห้องวันอื่น', day2Orders.length === 1, String(day2Orders.length));
+const day2Summary = buildSheetSummary(day2Orders, { startKey: '2026-11-27', endKey: '2026-11-27' });
+check('สรุปยอดวันที่ 27 พ.ย. = 500 (ไม่ใช่ 1000)', day2Summary.total === 500, String(day2Summary.total));
+const sheetRowNotes = buildSheetOrderRow(dep2).warnings;
+check(
+  'ชีตระบุวันที่โอนของทุกงวด',
+  /2026-11-17/.test(sheetRowNotes) && /2026-11-27/.test(sheetRowNotes),
+  sheetRowNotes,
 );
 
 store.addOrder(depositOrder('ch-deposit-full'));

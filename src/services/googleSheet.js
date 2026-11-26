@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import { slipCheckStatus, formatMoney } from '../features/shop/embeds.js';
-import { depositParts, paymentStage } from '../features/shop/store.js';
+import { depositParts, paymentStage, expandOrdersByPaymentDay } from '../features/shop/store.js';
 
 // ให้เทสต์สลับ fetch ได้ (ไม่แตะ global)
 let fetchImpl = (...args) => globalThis.fetch(...args);
@@ -66,6 +66,12 @@ export function buildSheetOrderRow(order = {}) {
     notes.push(`มัดจำ ${parts.percent}% ${formatMoney(parts.deposit)} / คงเหลือ ${formatMoney(parts.balance)}`);
     const stage = paymentStage(order);
     if (stage) notes.push(`งวดปัจจุบัน: ${stage.label} ${formatMoney(stage.expected)}`);
+    const payments = (Array.isArray(order.payments) ? order.payments : []).filter((p) => p && p.amount != null);
+    if (payments.length > 1 || payments.some((p) => p.dayKey && p.dayKey !== order.dayKey)) {
+      notes.push(
+        `วันที่โอน: ${payments.map((p) => `${formatMoney(p.amount)} (${p.dayKey || '—'})`).join(' · ')}`,
+      );
+    }
   }
   if (Array.isArray(check.warnings)) notes.push(...check.warnings.filter(Boolean));
   return {
@@ -96,13 +102,15 @@ export function buildSheetOrderRow(order = {}) {
 }
 
 // สรุปยอดของช่วงเวลาหนึ่ง (ใช้ตัวเลขชุดเดียวกับ embed/Excel)
-export function buildSheetSummary(orders = []) {
-  const checks = orders.map((o) => slipCheckStatus(o));
+export function buildSheetSummary(orders = [], { startKey = null, endKey = null } = {}) {
+  // จ่ายหลายงวด → นับตามวันที่โอน (1 งวด = 1 รายการ) เหมือนสรุปในแชท
+  const rows = expandOrdersByPaymentDay(orders, { startKey, endKey });
+  const checks = rows.map((o) => slipCheckStatus(o));
   const count = (key) => checks.filter((c) => c.key === key).length;
-  const paid = orders.filter((o) => o.amount != null);
+  const paid = rows.filter((o) => o.amount != null);
   const total = paid.reduce((sum, o) => sum + (Number(o.amount) || 0), 0);
   const byService = new Map();
-  for (const o of orders) {
+  for (const o of rows) {
     const key = o.productName || o.productId || 'ไม่ระบุ';
     const cur = byService.get(key) || { name: key, count: 0, sum: 0 };
     cur.count += 1;
@@ -111,9 +119,9 @@ export function buildSheetSummary(orders = []) {
   }
   return {
     total,
-    orderCount: orders.length,
+    orderCount: rows.length,
     paidCount: paid.length,
-    noSlip: orders.length - paid.length,
+    noSlip: rows.length - paid.length,
     ok: count('ok'),
     mismatch: count('mismatch'),
     review: count('review'),
@@ -130,7 +138,7 @@ export function formatByService(byService = []) {
 
 // payload ที่ส่งให้ Apps Script (ไม่ใส่ secret ที่นี่ — ตัวส่งเป็นคนเติม)
 export function buildSheetPayload({ period = 'day', label = '', startKey = '', endKey = '', orders = [], now = new Date() }) {
-  const summary = buildSheetSummary(orders);
+  const summary = buildSheetSummary(orders, { startKey, endKey });
   return {
     type: 'summary',
     period,

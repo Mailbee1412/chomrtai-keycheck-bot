@@ -20,6 +20,7 @@ import {
   nextOrderNumber,
   requestOrderClose,
   paymentStage,
+  expandOrdersByPaymentDay,
 } from './store.js';
 import {
   buildCatalogEmbed,
@@ -518,7 +519,8 @@ async function handleSlipSubmit(interaction) {
   }
   const maxAgeHours = Number(config.shop.slipMaxAgeHours) > 0 ? Number(config.shop.slipMaxAgeHours) : 0;
   const paidAtDate = verified?.paidAt ? new Date(verified.paidAt) : null;
-  if (maxAgeHours > 0 && paidAtDate && !Number.isNaN(paidAtDate.getTime())) {
+  // ออเดอร์ที่จ่ายเป็นงวดใช้ "วันที่โอนในสลิป" เป็นวันของงวดนั้น → ไม่สนว่าห่างจากวันแนบกี่วัน
+  if (!stage && maxAgeHours > 0 && paidAtDate && !Number.isNaN(paidAtDate.getTime())) {
     const ageHours = (Date.now() - paidAtDate.getTime()) / 3600000;
     if (ageHours > maxAgeHours) {
       warnings.push(`สลิปเก่า (โอนเมื่อ ${Math.floor(ageHours)} ชม. ที่แล้ว เกิน ${maxAgeHours} ชม.)`);
@@ -544,6 +546,8 @@ async function handleSlipSubmit(interaction) {
       })
       .catch((err) => console.warn(`[shop] post slip failed: ${err.message}`));
   }
+  const paymentDayKey =
+    paidAtDate && !Number.isNaN(paidAtDate.getTime()) ? dayKey(paidAtDate) : dayKey();
   setOrderAmount(channel?.id, amount, uploads.map((a) => a.url), transfer, {
     unitPrice,
     pricePer,
@@ -552,6 +556,8 @@ async function handleSlipSubmit(interaction) {
     expectedSource,
     priceMatch,
     stage: stage?.key || null,
+    paidAt: verified?.paidAt || null,
+    dayKey: paymentDayKey,
     slipWarnings: warnings,
   });
 
@@ -713,8 +719,10 @@ async function sendSummary(client, { startKey, endKey, label, footerTag, fileBas
   const period = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month' }[footerTag] || 'day';
   const sheetMode = isSheetEnabled();
   const orders = listOrdersInRange(startKey, endKey);
+  // คอมมิชชันจ่ายหลายงวด → แยกเป็น 1 งวดต่อ 1 แถว โดยใช้วันที่โอนในสลิป
+  const summaryOrders = expandOrdersByPaymentDay(orders, { startKey, endKey });
   const title = `📊 สรุปยอดร้าน · ${label}`;
-  const summary = buildDailySummaryEmbed({ dayKey: startKey, orders, title, footerTag });
+  const summary = buildDailySummaryEmbed({ dayKey: startKey, orders: summaryOrders, title, footerTag });
   if (sheetMode) {
     const linkField = buildSheetLinkField(period);
     if (linkField) summary.addFields(linkField);
@@ -722,20 +730,20 @@ async function sendSummary(client, { startKey, endKey, label, footerTag, fileBas
   }
   const details = buildOrderListEmbeds({
     dayKey: startKey,
-    orders,
+    orders: summaryOrders,
     title: `🧾 รายการออเดอร์ · ${label}`,
   });
   const messages = packEmbeds([summary, ...details]);
-  const csv = buildDailySummaryCsv(orders);
+  const csv = buildDailySummaryCsv(summaryOrders);
 
   // ยังสร้างไฟล์ไว้ในเครื่องเสมอ (สำรองเงียบ ๆ) แต่ในโหมดชีตจะไม่แนบเข้าแชท
   let xlsx = null;
   try {
-    xlsx = await buildDailySummaryXlsx({ dayKey: startKey, orders, title: label });
+    xlsx = await buildDailySummaryXlsx({ dayKey: startKey, orders: summaryOrders, title: label });
   } catch (err) {
     console.warn(`[shop] ${fileBase} xlsx failed: ${err.message}`);
   }
-  const saved = saveLocalCopies({ fileBase, xlsx, csv, startKey, endKey, label, orders });
+  const saved = saveLocalCopies({ fileBase, xlsx, csv, startKey, endKey, label, orders: summaryOrders });
   if (saved.backup) console.log(`[shop] สำรองข้อมูลแล้ว: ${saved.backup}`);
 
   // เขียนขึ้นชีตก่อนส่งแชท → ลิงก์ที่ส่งไปเห็นข้อมูลล่าสุดทันที

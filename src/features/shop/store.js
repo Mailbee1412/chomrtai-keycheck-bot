@@ -290,9 +290,14 @@ export function listOrders({ dayKey: key = null, openOnly = false } = {}) {
 
 // ออเดอร์ในช่วงวันที่ (YYYY-MM-DD แบบรวมหัวท้าย) — ใช้ทำสรุปรายสัปดาห์/รายเดือน
 export function listOrdersInRange(startKey, endKey) {
+  const inRange = (key) => key != null && key >= startKey && key <= endKey;
   return readOrders().filter((o) => {
     const key = o.dayKey || (o.createdAt ? dayKey(new Date(o.createdAt)) : null);
-    return key != null && key >= startKey && key <= endKey;
+    if (inRange(key)) return true;
+    // ออเดอร์ที่จ่ายเป็นงวด: ให้โผล่ในทุกวันที่มีสลิปโอน (แม้เปิดห้องคนละวัน)
+    return (Array.isArray(o.payments) ? o.payments : []).some((p) =>
+      inRange(p?.dayKey || (p?.paidAt ? dayKey(new Date(p.paidAt)) : null)),
+    );
   });
 }
 
@@ -319,6 +324,7 @@ export function setOrderAmount(roomId, amount, slipUrls = [], transfer = null, p
     order.transfer = transfer || null;
     order.paidAt = now;
     order.payments = Array.isArray(order.payments) ? order.payments : [];
+    const paidAt = priceInfo.paidAt || now;
     order.payments.push({
       stage: priceInfo.stage,
       amount: value,
@@ -326,7 +332,9 @@ export function setOrderAmount(roomId, amount, slipUrls = [], transfer = null, p
       match: priceInfo.priceMatch ?? null,
       slipUrl: urls[0] || null,
       transfer: transfer || null,
-      paidAt: now,
+      paidAt,
+      // วันที่โอนจากสลิป (ไม่ใช่วันที่แนบ/วันเปิดห้อง) — ใช้ทำสรุปยอดแยกงวด
+      dayKey: priceInfo.dayKey || (paidAt ? dayKey(new Date(paidAt)) : dayKey()),
     });
     if (priceInfo.stage === 'deposit' && priceInfo.priceMatch === true) order.depositPaid = true;
     if (priceInfo.stage === 'balance' && priceInfo.priceMatch === true) order.balancePaid = true;
@@ -451,6 +459,55 @@ export function paymentStage(order = {}, incomingAmount = null) {
     return { key: 'full', label: 'จ่ายเต็มรอบเดียว', expected: money(price - paid) };
   }
   return { key: 'deposit', label: `มัดจำ ${parts.percent}%`, expected: parts.deposit };
+}
+
+// แยกออเดอร์ที่จ่ายหลายงวดเป็น "1 งวด = 1 แถว" สำหรับสรุปยอด/รายการออเดอร์
+// วันที่ของแถว = วันที่โอนจากสลิป (ไม่ใช่วันเปิดห้อง) — บริการอื่นได้แถวเดิมไม่เปลี่ยน
+export function expandOrdersByPaymentDay(orders = [], { startKey = null, endKey = null } = {}) {
+  const inRange = (key) =>
+    Boolean(key) && (!startKey || key >= startKey) && (!endKey || key <= endKey);
+  return orders.flatMap((order) => {
+    const payments = (Array.isArray(order.payments) ? order.payments : []).filter((p) => {
+      if (!p) return false;
+      const key = p.dayKey || (p.paidAt ? dayKey(new Date(p.paidAt)) : order.dayKey);
+      return inRange(key);
+    });
+    if (!(Number(order.depositPercent) > 0) || !payments.length) {
+      // บริการที่จ่ายเต็ม/ยังไม่แนบสลิป: วันที่ของแถวคือวันเปิดห้อง
+      if ((startKey || endKey) && !inRange(order.dayKey)) return [];
+      return [order];
+    }
+    return payments.map((p) => {
+      const stage = p.stage || null;
+      const installmentLabel =
+        stage === 'deposit'
+          ? `มัดจำ ${order.depositPercent}%`
+          : stage === 'balance'
+            ? 'งวดที่เหลือ'
+            : stage === 'full'
+              ? 'จ่ายเต็มรอบเดียว'
+              : '';
+      return {
+        ...order,
+        dayKey: p.dayKey || (p.paidAt ? dayKey(new Date(p.paidAt)) : order.dayKey),
+        amount: p.amount == null ? null : Number(p.amount) || 0,
+        lastAmount: p.amount,
+        slipUrls: p.slipUrl ? [p.slipUrl] : [],
+        expected: p.expected,
+        priceMatch: p.match,
+        transfer: p.transfer || null,
+        paidAt: p.paidAt || null,
+        slipWarnings: order.slipWarnings || [],
+        payments: [p],
+        // ใช้สถานะของ "งวดนี้" ไม่ใช่สถานะรวมของห้อง
+        fullyPaid: stage === 'full',
+        depositPaid: stage !== 'deposit',
+        balancePaid: stage === 'balance' || stage === 'full',
+        installment: stage,
+        installmentLabel,
+      };
+    });
+  });
 }
 
 // ---------- สลิปที่เคยใช้ (กันสลิปซ้ำ/สลิปเก่า) ----------

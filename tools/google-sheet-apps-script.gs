@@ -252,3 +252,68 @@ function createSampleSheet() {
   sheet.autoResizeColumns(1, lastCol);
   return 'sample created: ' + sample.length + ' rows';
 }
+
+// จัดรูปแบบชีตให้คนเช็คอ่านง่าย (เรียกครั้งเดียวจาก Apps Script editor)
+// ตั้ง Conditional Formatting ไว้ด้วย → แถวออเดอร์ใหม่จะระบายสีตามผลตรวจเองอัตโนมัติ
+function beautifySheet() {
+  const ss = getSpreadsheet();
+
+  function styleHeader(sheet, count) {
+    if (sheet.getLastRow() < 1) return;
+    sheet.getRange(1, 1, 1, count)
+      .setFontWeight('bold')
+      .setFontColor('#ffffff')
+      .setBackground('#3c3c3c')
+      .setWrap(true);
+    sheet.setFrozenRows(1);
+  }
+
+  function setWidths(sheet, widths) {
+    widths.forEach((w, i) => sheet.setColumnWidth(i + 1, w));
+  }
+
+  function colorRules(sheet, lastCol) {
+    const range = sheet.getRange(2, 1, 1000, lastCol);
+    const rule = (formula, bg) => SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied(formula)
+      .setRanges([range])
+      .setBackground(bg)
+      .build();
+    sheet.setConditionalFormatRules([
+      rule('=AND($O2<>"",ISNUMBER(SEARCH("ไม่ตรง",$O2)))', '#f4cccc'),
+      rule('=AND($O2<>"",ISNUMBER(SEARCH("รอตรวจ",$O2)))', '#fce5cd'),
+      rule('=AND($O2<>"",ISNUMBER(SEARCH("ยังไม่แนบ",$O2)))', '#fff2cc'),
+      rule('=AND($O2<>"",ISNUMBER(SEARCH("ตรง",$O2)),NOT(ISNUMBER(SEARCH("ไม่ตรง",$O2))))', '#d9ead3'),
+    ]);
+  }
+
+  const orderWidths = [130, 60, 100, 90, 90, 120, 130, 240, 150, 80, 90, 90, 90, 90, 110, 80, 240, 150, 260, 70, 150];
+  ['ตัวอย่าง', TAB_ORDERS].forEach((name) => {
+    const sheet = ss.getSheetByName(name);
+    if (!sheet) return;
+    sheet.setTabColor('#d4af37');
+    styleHeader(sheet, ORDER_HEADERS.length);
+    setWidths(sheet, orderWidths);
+    sheet.getRange(1, 15).setNote('สีแถวอัตโนมัติ: เขียว=ตรง / แดง=ไม่ตรง / เหลือง=ยังไม่แนบสลิป / ส้ม=รอตรวจ');
+    const n = Math.max(sheet.getLastRow() - 1, 1);
+    sheet.getRange(2, 8, n, 1).setWrap(true);
+    sheet.getRange(2, 17, n, 3).setWrap(true);
+    sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
+    colorRules(sheet, ORDER_HEADERS.length);
+  });
+
+  const tabColors = { day: '#6fa8dc', week: '#8e7cc3', month: '#0b5394' };
+  Object.keys(TAB_SUMMARY).forEach((key) => {
+    const sheet = ss.getSheetByName(TAB_SUMMARY[key]);
+    if (!sheet) return;
+    sheet.setTabColor(tabColors[key]);
+    styleHeader(sheet, SUMMARY_HEADERS.length);
+    setWidths(sheet, [90, 180, 140, 140, 110, 110, 90, 110, 90, 90, 90, 100, 340, 150]);
+    const n = Math.max(sheet.getLastRow() - 1, 1);
+    sheet.getRange(2, 1, n, SUMMARY_HEADERS.length).setFontWeight('bold');
+    sheet.getRange(2, 13, n, 1).setWrap(true);
+    sheet.getRange(2, 5, n, 8).setNumberFormat('#,##0.00');
+  });
+
+  return 'beautified';
+}

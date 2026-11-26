@@ -67,6 +67,41 @@ function replyWithEmbed(interaction, title, lines) {
   return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
+// โพสต์ราคาที่ตกลงให้ลูกค้าเห็นในห้องออเดอร์ (Discord ส่ง modal ให้คนกดได้คนเดียว → ใช้ข้อความแทน)
+function customerPriceEmbed(order) {
+  const status =
+    order.priceMatch == null ? 'รอแนบสลิป' : order.priceMatch ? '✅ ยอดตรง' : '⚠️ ยอดไม่ตรง';
+  return new EmbedBuilder()
+    .setColor(SHOP_GOLD)
+    .setTitle('🏷️ แจ้งราคาสำหรับออเดอร์นี้')
+    .setDescription(
+      [
+        DIVIDER,
+        `${BULLET}บริการ : ${order.productName || order.productId || '—'}`,
+        `${BULLET}ราคาที่ตกลง : ${formatMoney(order.agreedPrice)}`,
+        `${BULLET}สถานะ : ${status}`,
+        DIVIDER,
+        'กดปุ่ม "แนบสลิป" ด้านล่างได้เลยครับ',
+      ].join('\n'),
+    )
+    .setTimestamp();
+}
+
+async function notifyCustomerPrice(interaction, order) {
+  try {
+    const channel = await interaction.client?.channels?.fetch?.(order.roomId);
+    if (!channel?.send) return false;
+    await channel.send({
+      ...(order.userId ? { content: `<@${order.userId}>` } : {}),
+      embeds: [customerPriceEmbed(order)],
+    });
+    return true;
+  } catch (err) {
+    console.warn(`[price] โพสต์แจ้งราคาในห้องไม่สำเร็จ: ${err.message}`);
+    return false;
+  }
+}
+
 export async function handlePriceCommand(interaction) {
   if (!interaction.isChatInputCommand?.() || interaction.commandName !== PRICE_COMMAND_NAME) return false;
 
@@ -100,11 +135,13 @@ export async function handlePriceCommand(interaction) {
       return true;
     }
     const updated = setOrderAgreedPrice(room.id, priceArg);
+    const notified = await notifyCustomerPrice(interaction, updated);
     await replyWithEmbed(interaction, '✅ ตั้งราคาที่ตกลงให้ห้องนี้แล้ว', [
       `${BULLET}ห้อง : <#${room.id}>`,
       `${BULLET}บริการ : ${updated.productName || updated.productId || '—'}`,
       `${BULLET}ราคาที่ตกลง : ${formatMoney(updated.agreedPrice)}`,
       `${BULLET}ผลตรวจตอนนี้ : ${updated.priceMatch == null ? 'รอสลิป' : updated.priceMatch ? '✅ ตรง' : '⚠️ ไม่ตรง'}`,
+      `${BULLET}แจ้งลูกค้าในห้อง : ${notified ? '✅ แล้ว' : '⚠️ ไม่สำเร็จ (ตรวจสิทธิ์บอทในห้อง)'}`,
       `${BULLET}ถ้าแนบสลิปไปแล้ว บอทเทียบยอดให้ทันที (ไม่ต้องแนบใหม่)`,
     ]).catch(() => {});
     return true;

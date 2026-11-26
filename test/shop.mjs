@@ -1456,6 +1456,7 @@ function priceInteraction({ staff = false, administrator = false, product = null
       getChannel: () => (room ? { id: room } : null),
     },
     reply: mkReply('reply'),
+    client: client(),
   };
 }
 
@@ -1479,6 +1480,15 @@ check(
   calls.some((c) => c[0] === 'reply' && /ราคาบริการ/.test(JSON.stringify(c[1]))),
   JSON.stringify(calls.map((c) => c[0])),
 );
+
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, product: 'commission-bot-2', price: 88 }));
+check(
+  'ตั้งเรตสินค้า (ไม่ใช่รายห้อง) → ไม่โพสต์ราคาในห้อง',
+  !calls.some((c) => c[0] === 'send' && /แจ้งราคาสำหรับออเดอร์นี้/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+store.setProductPrice('commission-bot-2', null);
 
 // ---------- ราคาที่ตกลงต่อห้อง (บริการไม่มีเรตคงที่ เช่น Theme / Commission) ----------
 function agreedThemeOrder(roomId, amount = null) {
@@ -1507,10 +1517,26 @@ const agreedOk = store.getOrder('ch-agreed-room');
 check('ตั้งราคาห้อง: บันทึกราคาที่ตกลง', agreedOk?.agreedPrice === 500);
 check('ตั้งราคาห้อง: แนบสลิปแล้ว → เทียบตรงทันที', agreedOk?.expected === 500 && agreedOk?.priceMatch === true);
 check('ตั้งราคาห้อง: ตอบแบบ ephemeral', calls.some((c) => c[0] === 'reply' && c[1]?.flags === 64));
+const customerPricePost = calls.find((c) => c[0] === 'send' && /แจ้งราคาสำหรับออเดอร์นี้/.test(JSON.stringify(c[1])));
+check('ตั้งราคาห้อง: โพสต์การ์ดราคาให้ลูกค้าเห็นในห้อง', Boolean(customerPricePost), JSON.stringify(calls.map((c) => c[0])));
+check(
+  'การ์ดราคาในห้อง: แท็กผู้ซื้อ + บอกราคา + สถานะ',
+  /<@u1>/.test(customerPricePost?.[1]?.content || '') &&
+    /500 ฿/.test(JSON.stringify(customerPricePost?.[1]?.embeds || [])) &&
+    /ยอดตรง/.test(JSON.stringify(customerPricePost?.[1]?.embeds || [])),
+  JSON.stringify(customerPricePost?.[1]?.content),
+);
 
 calls.length = 0;
 await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-room', price: 400 }));
 check('ตั้งราคาห้อง: ยอดไม่ตรง → ทำเครื่องหมายไม่ตรง', store.getOrder('ch-agreed-room')?.priceMatch === false);
+check(
+  'ตั้งราคาห้อง: อัปเดตราคาในห้องให้ลูกค้าเห็นด้วย',
+  calls.some(
+    (c) => c[0] === 'send' && /400 ฿/.test(JSON.stringify(c[1])) && /ยอดไม่ตรง/.test(JSON.stringify(c[1])),
+  ),
+  JSON.stringify(calls.map((c) => c[0])),
+);
 
 calls.length = 0;
 await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-agreed-room' }));

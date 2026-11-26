@@ -44,6 +44,7 @@ import {
 } from './ui.js';
 import { isSlipVerifyEnabled, verifySlip, fetchAttachment } from './slip.js';
 import { buildDailySummaryXlsx } from './xlsx.js';
+import { isSheetEnabled, syncSummaryToSheet, buildSheetLinkField } from '../../services/googleSheet.js';
 
 const STATE_FILE = path.join(DATA_DIR, 'shop-state.json');
 
@@ -656,16 +657,23 @@ export function saveLocalCopies({ fileBase, xlsx = null, csv = '', startKey, end
 }
 
 // ส่งสรุปยอดของช่วง [startKey, endKey] เข้าช่องแจ้งเตือนออเดอร์
-// การ์ดสรุป + การ์ดรายการออเดอร์ครบทุกรายการ + ไฟล์ Excel + CSV
+// โหมด Google Sheet = การ์ด + ลิงก์ชีต (ไม่แนบไฟล์) / ยังไม่ตั้งชีต = แนบ Excel + CSV เหมือนเดิม
 async function sendSummary(client, { startKey, endKey, label, footerTag, fileBase }) {
   const logId = config.shop.orderLogChannelId;
   if (!logId) return false;
   const log = await client.channels.fetch(logId).catch(() => null);
   if (!log?.send) return false;
 
+  const period = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month' }[footerTag] || 'day';
+  const sheetMode = isSheetEnabled();
   const orders = listOrdersInRange(startKey, endKey);
   const title = `📊 สรุปยอดร้าน · ${label}`;
   const summary = buildDailySummaryEmbed({ dayKey: startKey, orders, title, footerTag });
+  if (sheetMode) {
+    const linkField = buildSheetLinkField(period);
+    if (linkField) summary.addFields(linkField);
+    else console.warn('[sheet] ตั้ง webhook แล้ว แต่ยังไม่ได้ตั้ง SHOP_GSHEET_SHEET_URL → ข้อความในแชทจะไม่มีลิงก์ชีต');
+  }
   const details = buildOrderListEmbeds({
     dayKey: startKey,
     orders,
@@ -674,21 +682,32 @@ async function sendSummary(client, { startKey, endKey, label, footerTag, fileBas
   const messages = packEmbeds([summary, ...details]);
   const csv = buildDailySummaryCsv(orders);
 
+  // ยังสร้างไฟล์ไว้ในเครื่องเสมอ (สำรองเงียบ ๆ) แต่ในโหมดชีตจะไม่แนบเข้าแชท
   let xlsx = null;
   try {
     xlsx = await buildDailySummaryXlsx({ dayKey: startKey, orders, title: label });
   } catch (err) {
     console.warn(`[shop] ${fileBase} xlsx failed: ${err.message}`);
   }
-
-  // เก็บสำเนาลงเครื่องก่อนส่ง — ถ้าส่ง Discord ไม่สำเร็จยังมีไฟล์เก็บไว้
   const saved = saveLocalCopies({ fileBase, xlsx, csv, startKey, endKey, label, orders });
   if (saved.backup) console.log(`[shop] สำรองข้อมูลแล้ว: ${saved.backup}`);
+
+  // เขียนขึ้นชีตก่อนส่งแชท → ลิงก์ที่ส่งไปเห็นข้อมูลล่าสุดทันที
+  const sheet = await syncSummaryToSheet({ period, label, startKey, endKey, orders });
+  if (sheet.skipped) {
+    // ยังไม่ได้ตั้งค่า = ใช้โหมด Excel เหมือนเดิม
+  } else if (sheet.ok) {
+    console.log(
+      `[sheet] เขียนสรุป ${period} (${label}) ลง Google Sheet แล้ว: ${sheet.written ?? orders.length} ออเดอร์`,
+    );
+  } else {
+    console.warn(`[sheet] เขียน Google Sheet ไม่สำเร็จ: ${sheet.error}`);
+  }
 
   let allSent = true;
   for (let i = 0; i < messages.length; i += 1) {
     const payload = { embeds: messages[i] };
-    if (i === 0) {
+    if (i === 0 && !sheetMode) {
       payload.files = [
         ...(xlsx ? [new AttachmentBuilder(xlsx, { name: `${fileBase}.xlsx` })] : []),
         new AttachmentBuilder(Buffer.from(`\uFEFF${csv}`, 'utf8'), { name: `${fileBase}.csv` }),
@@ -703,6 +722,7 @@ async function sendSummary(client, { startKey, endKey, label, footerTag, fileBas
       });
     if (!sent) allSent = false;
   }
+
   return allSent;
 }
 

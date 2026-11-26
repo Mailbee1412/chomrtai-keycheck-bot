@@ -23,7 +23,7 @@ function run(file) {
 }
 
 let exitCode = 0;
-for (const file of ['linkapi.mjs', 'welcome.mjs', 'support-form.mjs', 'shop.mjs']) {
+for (const file of ['linkapi.mjs', 'welcome.mjs', 'support-form.mjs', 'shop.mjs', 'googleSheet.mjs']) {
   if ((await run(file)) !== 0) exitCode = 1;
 }
 rmSync(dir, { recursive: true, force: true });

@@ -116,6 +116,14 @@ export const config = {
       .map((s) => s.trim())
       .filter(Boolean),
     mentionStaff: (process.env.SHOP_MENTION_STAFF || 'true').trim().toLowerCase() !== 'false',
+    // Google Sheet (ไม่บังคับ) — ปล่อยว่าง = ไม่ส่งขึ้นชีต (ทำงานเหมือนเดิมทุกอย่าง)
+    gsheetWebhookUrl: (process.env.SHOP_GSHEET_WEBHOOK_URL || '').trim(),
+    gsheetSecret: (process.env.SHOP_GSHEET_SECRET || '').trim(),
+    // ลิงก์หน้าชีตที่ใส่ในข้อความสรุป (และลิงก์แยกแท็บได้ ถ้าต้องการ)
+    gsheetSheetUrl: (process.env.SHOP_GSHEET_SHEET_URL || '').trim(),
+    gsheetLinkDay: (process.env.SHOP_GSHEET_LINK_DAY || '').trim(),
+    gsheetLinkWeek: (process.env.SHOP_GSHEET_LINK_WEEK || '').trim(),
+    gsheetLinkMonth: (process.env.SHOP_GSHEET_LINK_MONTH || '').trim(),
   },
 };
 

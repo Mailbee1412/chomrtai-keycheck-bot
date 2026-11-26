@@ -183,6 +183,24 @@ npm start
 
 > แนะนำให้คัดลอก `data/backups/` ไปเก็บนอกเครื่อง (Google Drive/OneDrive/ฮาร์ดไดรฟ์) สัปดาห์ละครั้ง
 
+### Google Sheet (ไม่บังคับ — ใช้แทนไฟล์แนบในแชท)
+
+เมื่อตั้งค่าแล้ว ทุกครั้งที่ส่งสรุปบอทจะเขียนข้อมูลลงชีต แล้วส่ง **การ์ดสรุป + ลิงก์ชีต** เข้าแชทแทนไฟล์ `.xlsx/.csv` (ไฟล์สำรองใน `data/exports/` ยังสร้างอยู่เงียบ ๆ เหมือนเดิม)
+
+**ติดตั้งครั้งเดียว**
+1. เปิด Google Sheet เปล่า → `Extensions` → `Apps Script` → ลบโค้ดเดิม แล้ววางโค้ดจาก [`tools/google-sheet-apps-script.gs`](tools/google-sheet-apps-script.gs)
+2. ถ้าตั้ง `SHOP_GSHEET_SECRET` ให้ใส่รหัสเดียวกันในบรรทัด `SECRET` ของสคริปต์
+3. `Deploy` → `New deployment` → `Web app` (Execute as **Me**, Who has access **Anyone**) → คัดลอก URL
+4. ใส่ URLนั้นใน `SHOP_GSHEET_WEBHOOK_URL` และใส่ลิงก์หน้าชีต (`https://docs.google.com/spreadsheets/d/...`) ใน `SHOP_GSHEET_SHEET_URL`
+5. แชร์ชีต **Anyone with the link → Viewer** (คนในแชทต้องกดเปิดได้)
+6. ทดสอบ: เปิด URL Web app ในเบราว์เซอร์ ต้องเห็น `{"ok":true,...}`
+7. รีสตาร์ทบอท → ลอง `/สรุปยอด` เพื่อให้ข้อมูลเก่าไหลขึ้นชีต
+
+**ชีตที่ระบบสร้างเองอัตโนมัติ:** `ออเดอร์`, `สรุปรายวัน`, `สรุปรายสัปดาห์`, `สรุปรายเดือน`
+อัปเดตแถวเดิมตาม `roomId` (วัน/สัปดาห์/เดือน ใช้ป้ายช่วง) → รันซ้ำไม่ซ้ำแถว
+
+> ถ้ายังไม่ได้ตั้งค่า URL บอทจะทำงานแบบเดิมทุกประการ (แนบ Excel + CSV เข้าแชท) — ปลอดภัยตอนยัง setup ไม่เสร็จ
+
 ### ตัวแปรที่สำคัญ (.env)
 
 | ตัวแปร | ความหมาย |
@@ -204,6 +222,10 @@ npm start
 | `SHOP_SLIP_VERIFY_BASE` | เปลี่ยน base URL ของผู้ให้บริการ (ว่าง = ค่าเริ่มต้น) |
 | `SHOP_SLIP_VERIFY_MODEL` | โมเดล Gemini (ใช้เมื่อ provider เป็น `gemini`) |
 | `SHOP_SLIP_MAX_AGE_HOURS` | ถือว่าสลิป "เก่า" ถ้าโอนเกินกี่ชั่วโมง (แจ้งเตือนทีมงาน, ค่าเริ่มต้น 24) |
+| `SHOP_GSHEET_WEBHOOK_URL` | URL Web app จาก Apps Script (ว่าง = ใช้ Excel แนบแชทเหมือนเดิม) |
+| `SHOP_GSHEET_SECRET` | รหัสลับตรงกับบรรทัด `SECRET` ในสคริปต์ (แนะนำตั้ง) |
+| `SHOP_GSHEET_SHEET_URL` | ลิงก์หน้าชีตที่แนบในข้อความสรุป |
+| `SHOP_GSHEET_LINK_DAY` / `_WEEK` / `_MONTH` | ลิงก์แยกแท็บ (ไม่ใส่ = ใช้ลิงก์ด้านบน) |
 
 ---
 

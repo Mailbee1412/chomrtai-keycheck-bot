@@ -401,6 +401,17 @@ function beautifySheet() {
     });
   }
 
+  function trimEmptyOrderRows(sheet) {
+    const last = sheet.getLastRow();
+    if (last < 2) return;
+    const values = sheet.getRange(2, 1, last - 1, ORDER_HEADERS.length).getValues();
+    let lastData = 1;
+    values.forEach((row, i) => {
+      if (row.some((v) => v !== '' && v !== null)) lastData = i + 2;
+    });
+    if (last > lastData) sheet.deleteRows(lastData + 1, last - lastData);
+  }
+
   function cleanSummaryTestRows(sheet) {
     const last = sheet.getLastRow();
     if (last < 2) return 0;
@@ -419,14 +430,17 @@ function beautifySheet() {
   ['ตัวอย่าง', TAB_ORDERS].forEach((name) => {
     const sheet = ss.getSheetByName(name);
     if (!sheet) return;
+    if (name === TAB_ORDERS) trimEmptyOrderRows(sheet);
     sheet.setTabColor('#d4af37');
     styleHeader(sheet, ORDER_HEADERS.length);
     setWidths(sheet, orderWidths);
     sheet.getRange(1, 15).setNote('สีแถวอัตโนมัติ: เขียว=ตรง / แดง=ไม่ตรง / เหลือง=ยังไม่แนบสลิป / ส้ม=รอตรวจ');
-    const n = Math.max(sheet.getLastRow() - 1, 1);
-    sheet.getRange(2, 8, n, 1).setWrap(true);
-    sheet.getRange(2, 17, n, 3).setWrap(true);
-    sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
+    const n = sheet.getLastRow() - 1;
+    if (n > 0) {
+      sheet.getRange(2, 8, n, 1).setWrap(true);
+      sheet.getRange(2, 17, n, 3).setWrap(true);
+      sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
+    }
     colorRules(sheet, ORDER_HEADERS.length);
     if (name === 'ตัวอย่าง') {
       paintSample(sheet);
@@ -435,8 +449,9 @@ function beautifySheet() {
       applyFilter(sheet, dataLast);
       applyValidation(sheet, 2, dataLast);
     } else {
-      applyFilter(sheet, Math.max(sheet.getLastRow(), 2));
-      applyValidation(sheet, 2, Math.max(sheet.getLastRow(), 200));
+      const last = sheet.getLastRow();
+      applyFilter(sheet, Math.max(last, 1));
+      if (last > 1) applyValidation(sheet, 2, last);
     }
   });
 

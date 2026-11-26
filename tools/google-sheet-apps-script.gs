@@ -315,6 +315,60 @@ function beautifySheet() {
     });
   }
 
+  // คำอธิบายการใช้งาน + เฉลยสี วางไว้ด้านล่างแถวตัวอย่างในแท็บเดียวกัน
+  // ลบของเก่าก่อนทุกครั้ง → รันซ้ำไม่ซ้อนกัน
+  function writeGuide(sheet) {
+    let last = sheet.getLastRow();
+    for (let r = 2; r <= last; r += 1) {
+      if (String(sheet.getRange(r, 1).getValue() || '').indexOf('วิธีใช้ชีต') >= 0) {
+        sheet.deleteRows(r, last - r + 1);
+        break;
+      }
+    }
+    last = sheet.getLastRow();
+    const start = last + 2;
+
+    const title = sheet.getRange(start, 1, 1, ORDER_HEADERS.length);
+    title.merge();
+    title.setValue('📖 วิธีใช้ชีต (อ่านก่อนตรวจ)')
+      .setBackground('#3c3c3c').setFontColor('#ffffff').setFontWeight('bold');
+    sheet.setRowHeight(start, 32);
+
+    const colors = [
+      ['✅ ตรง', '#d9ead3', '#b6d7a8', 'ยอดจริงตรงกับยอดที่ควรได้ → ส่งคีย์ให้ลูกค้าได้เลย'],
+      ['⚠️ ไม่ตรง', '#f4cccc', '#ea9999', 'ยอดไม่ตรง → แจ้งลูกค้า/ตรวจสลิปก่อนส่งคีย์'],
+      ['🕓 ยังไม่แนบสลิป', '#fff2cc', '#ffe599', 'ยังไม่ได้สลิป → รอแนบก่อน ยังไม่ต้องส่งคีย์'],
+      ['🔎 รอตรวจ', '#fce5cd', '#f9cb9c', 'แนบสลิปแล้วแต่ต้องให้ทีมตรวจเพิ่ม'],
+    ];
+    colors.forEach((c, i) => {
+      const r = start + 1 + i;
+      const label = sheet.getRange(r, 1, 1, 2);
+      label.merge().setValue(c[0]).setBackground(c[2]).setFontWeight('bold');
+      const detail = sheet.getRange(r, 3, 1, ORDER_HEADERS.length - 2);
+      detail.merge().setValue(c[3]).setBackground(c[1]).setWrap(true);
+      sheet.setRowHeight(r, 28);
+    });
+
+    const noteStart = start + 6;
+    const noteHead = sheet.getRange(noteStart, 1, 1, ORDER_HEADERS.length);
+    noteHead.merge().setValue('💡 อ่านยังไง / กฎของบอท')
+      .setBackground('#d4af37').setFontWeight('bold');
+    sheet.setRowHeight(noteStart, 28);
+
+    const notes = [
+      'คอลัมน์ O = ผลตรวจ · P = ตรง/ไม่ตรง · Q = ข้อสังเกต · S = ลิงก์สลิป · T = ปิดห้อง',
+      'แถวออเดอร์ใหม่จะระบายสีเองอัตโนมัติตามผลตรวจ (ไม่ต้องมาจัดสีซ้ำ)',
+      'ลูกค้าแจ้งปิดห้องได้ / ปุ่มปิดห้องเป็นของทีมงานเท่านั้น',
+      'สรุปยอดดูที่แท็บ สรุปรายวัน · สรุปรายสัปดาห์ · สรุปรายเดือน (บอทอัปเดตเวลา 00:05)',
+    ];
+    notes.forEach((text, i) => {
+      const r = noteStart + 1 + i;
+      const cell = sheet.getRange(r, 1, 1, ORDER_HEADERS.length);
+      cell.merge().setValue('• ' + text).setBackground('#f3f3f3').setWrap(true);
+      sheet.setRowHeight(r, 24);
+    });
+  }
+
   const orderWidths = [130, 60, 100, 90, 90, 120, 130, 240, 150, 80, 90, 90, 90, 90, 110, 80, 240, 150, 260, 70, 150];
   ['ตัวอย่าง', TAB_ORDERS].forEach((name) => {
     const sheet = ss.getSheetByName(name);
@@ -328,7 +382,10 @@ function beautifySheet() {
     sheet.getRange(2, 17, n, 3).setWrap(true);
     sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
     colorRules(sheet, ORDER_HEADERS.length);
-    if (name === 'ตัวอย่าง') paintSample(sheet);
+    if (name === 'ตัวอย่าง') {
+      paintSample(sheet);
+      writeGuide(sheet);
+    }
   });
 
   const tabColors = { day: '#6fa8dc', week: '#8e7cc3', month: '#0b5394' };

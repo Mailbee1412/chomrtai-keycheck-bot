@@ -23,7 +23,7 @@ const SECRET = ''; // ใส่รหัสเดียวกับ SHOP_GSHEET_
 
 // ใช้เฉพาะกรณีสร้างโปรเจกต์ standalone ที่ script.google.com (วิธี B)
 // ตัวอย่าง: https://docs.google.com/spreadsheets/d/<ใส่ตรงนี้>/edit
-const SHEET_ID = '1mK1Yk3gz5ZppihYTBfHFusRM7CfHDlFD8GTHX6nJ0Uw';
+const SHEET_ID = '1WApHCUOQhDx4t9TJZSL4LI8QMnYJkzprnWj4CWO8LL4';
 
 const TAB_ORDERS = 'ออเดอร์';
 const TAB_SUMMARY = {

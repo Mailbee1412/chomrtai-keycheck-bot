@@ -1,6 +1,15 @@
 import { EmbedBuilder, SlashCommandBuilder, MessageFlags, PermissionFlagsBits } from 'discord.js';
 import { config } from '../../config.js';
-import { listProducts, getProduct, setProductPrice, ensureSeeded, getOrder, setOrderAgreedPrice } from './store.js';
+import {
+  listProducts,
+  getProduct,
+  setProductPrice,
+  ensureSeeded,
+  getOrder,
+  setOrderAgreedPrice,
+  depositParts,
+  paymentStage,
+} from './store.js';
 import { formatMoney } from './embeds.js';
 
 export const PRICE_COMMAND_NAME = 'ตั้งราคา';
@@ -67,10 +76,38 @@ function replyWithEmbed(interaction, title, lines) {
   return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
+// แสดงรายละเอียดมัดจำ/คงเหลือ (เฉพาะคอมมิชชันที่ตั้ง depositPercent)
+function depositLines(order) {
+  const parts = depositParts(order);
+  if (!parts) return [];
+  const stage = paymentStage(order);
+  const paid = Number(order.amount) || 0;
+  const price = Number(order.agreedPrice);
+  const lines = [
+    `${BULLET}มัดจำ ${parts.percent}% : ${formatMoney(parts.deposit)}`,
+    `${BULLET}คงเหลือ : ${formatMoney(parts.balance)}`,
+  ];
+  if (stage) lines.push(`${BULLET}งวดที่ต้องจ่ายตอนนี้ : ${stage.label} · ${formatMoney(stage.expected)}`);
+  if (paid >= price - 0.01) lines.push(`${BULLET}ชำระแล้วทั้งสิ้น : ${formatMoney(paid)}`);
+  return lines;
+}
+
+function priceStatus(order) {
+  const parts = depositParts(order);
+  if (!parts) {
+    return order.priceMatch == null ? 'รอแนบสลิป' : order.priceMatch ? '✅ ยอดตรง' : '⚠️ ยอดไม่ตรง';
+  }
+  const paid = Number(order.amount) || 0;
+  const price = Number(order.agreedPrice);
+  if (paid >= price - 0.01) return '✅ ชำระครบแล้ว';
+  if (order.priceMatch === false) return '⚠️ ยอดไม่ตรง';
+  if (paid >= parts.deposit - 0.01) return `✅ มัดจำแล้ว · คงเหลือ ${formatMoney(price - paid)}`;
+  if (order.priceMatch === true) return '✅ มัดจำตรง';
+  return `รอแนบสลิปมัดจำ ${formatMoney(parts.deposit)}`;
+}
+
 // โพสต์ราคาที่ตกลงให้ลูกค้าเห็นในห้องออเดอร์ (Discord ส่ง modal ให้คนกดได้คนเดียว → ใช้ข้อความแทน)
 function customerPriceEmbed(order) {
-  const status =
-    order.priceMatch == null ? 'รอแนบสลิป' : order.priceMatch ? '✅ ยอดตรง' : '⚠️ ยอดไม่ตรง';
   return new EmbedBuilder()
     .setColor(SHOP_GOLD)
     .setTitle('🏷️ แจ้งราคาสำหรับออเดอร์นี้')
@@ -79,7 +116,8 @@ function customerPriceEmbed(order) {
         DIVIDER,
         `${BULLET}บริการ : ${order.productName || order.productId || '—'}`,
         `${BULLET}ราคาที่ตกลง : ${formatMoney(order.agreedPrice)}`,
-        `${BULLET}สถานะ : ${status}`,
+        ...depositLines(order),
+        `${BULLET}สถานะ : ${priceStatus(order)}`,
         DIVIDER,
         'กดปุ่ม "แนบสลิป" ด้านล่างได้เลยครับ',
       ].join('\n'),
@@ -129,8 +167,9 @@ export async function handlePriceCommand(interaction) {
       await replyWithEmbed(interaction, `🏷️ ราคาที่ตกลง · ${order.productName || order.productId || 'ออเดอร์'}`, [
         `${BULLET}ห้อง : <#${room.id}>`,
         `${BULLET}ราคาที่ตกลง : ${order.agreedPrice == null ? '— ยังไม่ตั้ง' : formatMoney(order.agreedPrice)}`,
+        ...depositLines(order),
         `${BULLET}ยอดจากสลิป : ${order.amount == null ? '— ยังไม่แนบ' : formatMoney(order.amount)}`,
-        `${BULLET}ผลตรวจตอนนี้ : ${order.priceMatch == null ? 'รอตรวจ' : order.priceMatch ? '✅ ตรง' : '⚠️ ไม่ตรง'}`,
+        `${BULLET}ผลตรวจตอนนี้ : ${priceStatus(order)}`,
       ]).catch(() => {});
       return true;
     }
@@ -140,7 +179,8 @@ export async function handlePriceCommand(interaction) {
       `${BULLET}ห้อง : <#${room.id}>`,
       `${BULLET}บริการ : ${updated.productName || updated.productId || '—'}`,
       `${BULLET}ราคาที่ตกลง : ${formatMoney(updated.agreedPrice)}`,
-      `${BULLET}ผลตรวจตอนนี้ : ${updated.priceMatch == null ? 'รอสลิป' : updated.priceMatch ? '✅ ตรง' : '⚠️ ไม่ตรง'}`,
+      ...depositLines(updated),
+      `${BULLET}ผลตรวจตอนนี้ : ${priceStatus(updated)}`,
       `${BULLET}แจ้งลูกค้าในห้อง : ${notified ? '✅ แล้ว' : '⚠️ ไม่สำเร็จ (ตรวจสิทธิ์บอทในห้อง)'}`,
       `${BULLET}ถ้าแนบสลิปไปแล้ว บอทเทียบยอดให้ทันที (ไม่ต้องแนบใหม่)`,
     ]).catch(() => {});

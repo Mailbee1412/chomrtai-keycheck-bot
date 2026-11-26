@@ -1,5 +1,6 @@
 import { EmbedBuilder } from 'discord.js';
 import { config } from '../../config.js';
+import { paymentStage } from './store.js';
 
 const DIVIDER = '✧ ───────────── ✧';
 const BULLET = '◦ ';
@@ -173,13 +174,15 @@ export function formatTransferLines(transfer) {
 }
 
 // ข้อความยืนยันหลังบันทึกสลิป
-export function buildSlipRecordedContent(amount, userId, transfer = null) {
+export function buildSlipRecordedContent(amount, userId, transfer = null, stageLabel = null, progressText = null) {
   const lines = [
     '✦ บันทึกการชำระเงิน ✦',
     DIVIDER,
     `${BULLET}ผู้ชำระ : <@${userId}>`,
     `${BULLET}ยอดจากสลิป : ${amount == null ? 'รอทีมงานตรวจสอบ' : formatMoney(amount)}`,
   ];
+  if (stageLabel) lines.push(`${BULLET}งวดที่ชำระ : ${stageLabel}`);
+  if (progressText) lines.push(`${BULLET}${progressText}`);
   const t = formatTransferLines(transfer);
   if (t.length) lines.push('', '✦ ข้อมูลการโอน', ...t);
   lines.push(DIVIDER, 'ทีมงานจะตรวจสอบและดำเนินการต่อ ♡');
@@ -200,6 +203,7 @@ export function buildSlipAlertNotice({
   priceMatch = null,
   transRef = null,
   paidAt = null,
+  stageLabel = null,
 }) {
   const per = Number(pricePer) > 0 ? Number(pricePer) : 1;
   const unit = per > 1 ? `${per} ข้อความ` : 'หน่วย';
@@ -212,6 +216,7 @@ export function buildSlipAlertNotice({
     `${BULLET}ห้อง : ${roomId ? `<#${roomId}>` : 'ไม่ระบุ'}`,
     `${BULLET}ผู้ซื้อ : <@${order.userId}>`,
     `${BULLET}บริการ : ${order.productName || order.productId || 'ไม่ระบุ'}`,
+    ...(stageLabel ? [`${BULLET}งวดที่ชำระ : ${stageLabel}`] : []),
     `${BULLET}ราคา : ${formatMoney(unitPrice)} / ${unit}`,
     `${BULLET}จำนวน : ${quantity} ${unit}`,
     `${BULLET}ยอดที่ควรได้ : ${expected == null ? 'ไม่ระบุราคา' : formatMoney(expected)}${expectedSource === 'agreed' ? ' (ราคาที่ตกลง)' : ''}`,
@@ -270,7 +275,17 @@ export function slipCheckStatus(order = {}) {
         warnings: [...warnings, 'ยังไม่ได้ยืนยันจากสลิป (ใช้ยอดที่ผู้ซื้อกรอก)'],
       };
     }
-    return { key: 'ok', label: 'ตรง', mark: '✅', warnings };
+    const lastStage = Array.isArray(order.payments) && order.payments.length
+      ? order.payments[order.payments.length - 1]?.stage
+      : paymentStage(order)?.key;
+    const suffix = order.fullyPaid
+      ? ''
+      : lastStage === 'deposit'
+        ? ' (มัดจำ)'
+        : lastStage === 'balance'
+          ? ' (งวดเหลือ)'
+          : '';
+    return { key: 'ok', label: `ตรง${suffix}`, mark: '✅', warnings };
   }
   return { key: 'review', label: 'รอตรวจ', mark: '🔎', warnings };
 }

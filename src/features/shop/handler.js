@@ -19,6 +19,7 @@ import {
   dayKey,
   nextOrderNumber,
   requestOrderClose,
+  paymentStage,
 } from './store.js';
 import {
   buildCatalogEmbed,
@@ -220,6 +221,8 @@ async function createServiceRoom(interaction, product) {
   }
   await channel.send?.(payload).catch((err) => console.warn(`[shop] send room failed: ${err.message}`));
 
+  // เฉพาะคอมมิชชันย่อย: จ่ายมัดจำ 50% ก่อนเริ่มงาน + อีก 50% ก่อนปิดห้อง
+  const depositPercent = product.category === 'commission-bot' && product.type !== 'group' ? 50 : 0;
   addOrder({
     roomId: channel.id,
     orderNo,
@@ -230,7 +233,15 @@ async function createServiceRoom(interaction, product) {
     unitPrice: product.price == null ? null : Math.max(0, Number(product.price) || 0),
     pricePer: Number(product.pricePer) > 0 ? Number(product.pricePer) : 1,
     amount: null,
+    lastAmount: null,
     slipUrls: [],
+    payments: [],
+    depositPercent,
+    depositAmount: null,
+    balanceAmount: null,
+    depositPaid: false,
+    balancePaid: false,
+    fullyPaid: false,
     dayKey: dayKey(),
     createdAt: new Date().toISOString(),
     closedAt: null,
@@ -491,7 +502,9 @@ async function handleSlipSubmit(interaction) {
     Number(order?.pricePer) > 0 ? Number(order.pricePer) : Number(product?.pricePer) > 0 ? Number(product.pricePer) : 1;
   // ราคาที่ทีมตั้งให้ห้องนี้มี precedence สูงกว่าเรตคงที่ของสินค้า
   const agreedPrice = order?.agreedPrice != null ? Number(order.agreedPrice) : null;
-  const expected = agreedPrice != null ? agreedPrice : unitPrice != null ? (unitPrice / pricePer) * quantity : null;
+  // คอมมิชชันจ่าย 2 งวด → เทียบกับ "งวดที่ต้องจ่ายตอนนี้" ไม่ใช่ราคาเต็มเสมอไป
+  const stage = paymentStage(order || {}, amount);
+  const expected = stage ? stage.expected : agreedPrice != null ? agreedPrice : unitPrice != null ? (unitPrice / pricePer) * quantity : null;
   const expectedSource = agreedPrice != null ? 'agreed' : expected != null ? 'price' : null;
   const priceMatch = expected != null && amount != null ? Math.abs(amount - expected) < 0.01 : null;
 
@@ -515,9 +528,20 @@ async function handleSlipSubmit(interaction) {
     addUsedSlip({ hash: slipHash, transRef, roomId: channel?.id, userId: interaction.user.id, amount });
   }
 
+  // บอกรวมยอดที่ยังต้องจ่ายเพิ่มให้ลูกค้าเห็นในห้อง (เฉพาะออเดอร์ที่จ่ายเป็นงวด)
+  let progressText = null;
+  if (stage && Number(order?.agreedPrice) > 0) {
+    const paidAfter = (Number(order.amount) || 0) + (amount || 0);
+    const left = Math.round((Number(order.agreedPrice) - paidAfter) * 100) / 100;
+    progressText = left > 0.01 ? `งวดถัดไปที่ต้องจ่าย : ${formatMoney(left)}` : '✅ ชำระครบตามราคาที่ตกลงแล้ว';
+  }
+
   if (channel?.send) {
     await channel
-      .send({ content: buildSlipRecordedContent(amount, interaction.user.id, transfer), files })
+      .send({
+        content: buildSlipRecordedContent(amount, interaction.user.id, transfer, stage?.label || null, progressText),
+        files,
+      })
       .catch((err) => console.warn(`[shop] post slip failed: ${err.message}`));
   }
   setOrderAmount(channel?.id, amount, uploads.map((a) => a.url), transfer, {
@@ -527,6 +551,7 @@ async function handleSlipSubmit(interaction) {
     expected,
     expectedSource,
     priceMatch,
+    stage: stage?.key || null,
     slipWarnings: warnings,
   });
 
@@ -552,6 +577,7 @@ async function handleSlipSubmit(interaction) {
               priceMatch,
               transRef,
               paidAt: transfer?.paidAt || null,
+              stageLabel: stage?.label || null,
               roomId: channel?.id,
             }),
           ]

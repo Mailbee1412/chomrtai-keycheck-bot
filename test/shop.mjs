@@ -1416,6 +1416,8 @@ check(
 check('ข้อความห้องบอกว่าเป็น QR ของบริการนี้', /QR ของบริการนี้/.test(commissionSend?.[1]?.content || ''), (commissionSend?.[1]?.content || '').slice(0, 160));
 const commissionRoom = calls.find((c) => c[0] === 'channelCreate');
 check('ชื่อห้องคอมย่อยใช้ชื่อย่อ commission-1', /^order-\d{4}-commission-1-tester$/.test(commissionRoom?.[1]?.name || ''), String(commissionRoom?.[1]?.name));
+const latestCommissionOrder = store.readOrders().filter((o) => o.productId === 'commission-bot-1').at(-1);
+check('ห้องคอมย่อยถูกตั้งให้จ่ายมัดจำ 50%', latestCommissionOrder?.depositPercent === 50, String(latestCommissionOrder?.depositPercent));
 
 store.upsertProduct({ ...store.getProduct('commission-bot-1'), qrImage: path.join(os.tmpdir(), 'shop-qr-missing.png') });
 calls.length = 0;
@@ -1729,6 +1731,124 @@ check(
   String(themeRoom?.[1]?.name),
 );
 config.shop.mentionStaff = true;
+
+// ---------- มัดจำ 50% ของคอมมิชชัน (จ่าย 2 งวด) ----------
+config.shop.slipVerifyProvider = 'easyslip';
+config.shop.slipVerifyKey = 'test-key';
+const depositSlipMock = (amount, ref) =>
+  easySlipMock({
+    success: true,
+    data: {
+      amountInSlip: amount,
+      isDuplicate: false,
+      rawSlip: {
+        transRef: ref,
+        date: '2026-11-27T10:00:00+07:00',
+        amount: { amount },
+        sender: { bank: { short: 'KBANK' }, account: { name: { th: 'นายทดสอบ ใจดี' } } },
+        receiver: { bank: { short: 'SCB' }, account: { name: { th: 'ร้านสมฤทัย' } } },
+      },
+    },
+  });
+
+function depositOrder(roomId) {
+  return {
+    roomId,
+    userId: 'u1',
+    userName: 'tester',
+    productId: 'commission-bot-2',
+    productName: '👤 ◦ คอมมิชชัน 2',
+    unitPrice: null,
+    pricePer: 1,
+    amount: null,
+    lastAmount: null,
+    slipUrls: [],
+    payments: [],
+    depositPercent: 50,
+    depositAmount: null,
+    balanceAmount: null,
+    depositPaid: false,
+    balancePaid: false,
+    fullyPaid: false,
+    expected: null,
+    priceMatch: null,
+    dayKey: store.dayKey(),
+    createdAt: new Date().toISOString(),
+    closedAt: null,
+  };
+}
+
+store.addOrder(depositOrder('ch-deposit'));
+calls.length = 0;
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-deposit', price: 1000 }));
+const depositSet = store.getOrder('ch-deposit');
+check(
+  'มัดจำ: ตั้งราคา 1000 → มัดจำ 500 / คงเหลือ 500',
+  depositSet?.depositAmount === 500 && depositSet?.balanceAmount === 500,
+  JSON.stringify({ deposit: depositSet?.depositAmount, balance: depositSet?.balanceAmount }),
+);
+check('มัดจำ: งวดแรกที่ต้องจ่าย = 500', depositSet?.expected === 500, String(depositSet?.expected));
+const depositCard = calls.find((c) => c[0] === 'send' && /แจ้งราคาสำหรับออเดอร์นี้/.test(JSON.stringify(c[1])))?.[1];
+const depositCardText = JSON.stringify(depositCard || {});
+check(
+  'การ์ดราคาโชว์มัดจำ/คงเหลือ/งวดปัจจุบัน',
+  /มัดจำ 50% : 500 ฿/.test(depositCardText) &&
+    /คงเหลือ : 500 ฿/.test(depositCardText) &&
+    /งวดที่ต้องจ่ายตอนนี้ : มัดจำ 50% · 500 ฿/.test(depositCardText),
+  depositCardText.slice(0, 300),
+);
+
+depositSlipMock(500, 'DEP-1');
+calls.length = 0;
+await handleShopInteraction(slipSubmitInteraction('500', '1', 'ch-deposit'));
+const dep1 = store.getOrder('ch-deposit');
+check('มัดจำ: สลิปใบแรกเทียบ 500 → ตรง', dep1?.expected === 500 && dep1?.priceMatch === true && dep1?.amount === 500);
+check('มัดจำ: จ่ายมัดจำแล้ว แต่ยังไม่ครบ', dep1?.depositPaid === true && dep1?.balancePaid === false && dep1?.fullyPaid !== true);
+check('มัดจำ: บันทึกประวัติงวด deposit', dep1?.payments?.[0]?.stage === 'deposit', JSON.stringify(dep1?.payments));
+check(
+  'ข้อความในห้องบอกงวดที่ชำระ + ยอดที่ต้องจ่ายต่อ',
+  calls.some(
+    (c) =>
+      c[0] === 'roomSlipSend' &&
+      /งวดที่ชำระ : มัดจำ 50%/.test(JSON.stringify(c[1])) &&
+      /งวดถัดไปที่ต้องจ่าย : 500 ฿/.test(JSON.stringify(c[1])),
+  ),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+check('สถานะหลังจ่ายมัดจำ = ตรง (มัดจำ)', slipCheckStatus(dep1).label === 'ตรง (มัดจำ)', slipCheckStatus(dep1).label);
+
+depositSlipMock(500, 'DEP-2');
+calls.length = 0;
+await handleShopInteraction(slipSubmitInteraction('500', '1', 'ch-deposit'));
+const dep2 = store.getOrder('ch-deposit');
+check('มัดจำ: สลิปใบที่สองเทียบยอดคงเหลือ 500', dep2?.payments?.[1]?.expected === 500 && dep2?.payments?.[1]?.match === true);
+check('มัดจำ: จ่ายครบ 1000 → ทำเครื่องหมายชำระครบ', dep2?.amount === 1000 && dep2?.fullyPaid === true && dep2?.balancePaid === true);
+check('มัดจำ: ประวัติมี 2 งวด (deposit → balance)', dep2?.payments?.length === 2 && dep2?.payments?.[1]?.stage === 'balance');
+check('สถานะหลังชำระครบ = ตรง', slipCheckStatus(dep2).label === 'ตรง', slipCheckStatus(dep2).label);
+check(
+  'ข้อความในห้องแจ้งชำระครบแล้ว',
+  calls.some((c) => c[0] === 'roomSlipSend' && /ชำระครบตามราคาที่ตกลงแล้ว/.test(JSON.stringify(c[1]))),
+  JSON.stringify(calls.map((c) => c[0])),
+);
+
+store.addOrder(depositOrder('ch-deposit-full'));
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-deposit-full', price: 1000 }));
+depositSlipMock(1000, 'DEP-FULL');
+calls.length = 0;
+await handleShopInteraction(slipSubmitInteraction('1000', '1', 'ch-deposit-full'));
+const depFull = store.getOrder('ch-deposit-full');
+check('จ่ายเต็มรอบเดียว → เทียบกับราคา 1000', depFull?.payments?.[0]?.expected === 1000 && depFull?.priceMatch === true);
+check('จ่ายเต็มรอบเดียว → ถือว่าชำระครบ', depFull?.fullyPaid === true && depFull?.depositPaid === true && depFull?.balancePaid === true);
+
+store.addOrder(depositOrder('ch-deposit-bad'));
+await handlePriceCommand(priceInteraction({ staff: true, room: 'ch-deposit-bad', price: 1000 }));
+depositSlipMock(400, 'DEP-BAD');
+calls.length = 0;
+await handleShopInteraction(slipSubmitInteraction('400', '1', 'ch-deposit-bad'));
+const depBad = store.getOrder('ch-deposit-bad');
+check('มัดจำไม่ตรง → แจ้งทีมงาน', calls.some((c) => c[0] === 'logSend'), JSON.stringify(calls.map((c) => c[0])));
+check('มัดจำไม่ตรง → ยังไม่ทำเครื่องหมายจ่ายมัดจำ', depBad?.expected === 500 && depBad?.priceMatch === false && depBad?.depositPaid !== true);
+check('แจ้งเตือนระบุงวดที่ชำระ', /งวดที่ชำระ : มัดจำ 50%/.test(calls.find((c) => c[0] === 'logSend')?.[1]?.content || ''));
 
 console.log(failed === 0 ? '\nผ่านทั้งหมด ✅' : `\nมี ${failed} รายการที่ไม่ผ่าน ❌`);
 process.exit(failed === 0 ? 0 : 1);

@@ -1,5 +1,6 @@
 import { config } from '../config.js';
 import { slipCheckStatus, formatMoney } from '../features/shop/embeds.js';
+import { depositParts, paymentStage } from '../features/shop/store.js';
 
 // ให้เทสต์สลับ fetch ได้ (ไม่แตะ global)
 let fetchImpl = (...args) => globalThis.fetch(...args);
@@ -60,6 +61,12 @@ export function buildSheetOrderRow(order = {}) {
   const slipUrls = (Array.isArray(order.slipUrls) ? order.slipUrls : []).filter(Boolean);
   const notes = [];
   if (order.expectedSource === 'agreed') notes.push('ราคาที่ตกลง (ทีมตั้ง)');
+  const parts = depositParts(order);
+  if (parts) {
+    notes.push(`มัดจำ ${parts.percent}% ${formatMoney(parts.deposit)} / คงเหลือ ${formatMoney(parts.balance)}`);
+    const stage = paymentStage(order);
+    if (stage) notes.push(`งวดปัจจุบัน: ${stage.label} ${formatMoney(stage.expected)}`);
+  }
   if (Array.isArray(check.warnings)) notes.push(...check.warnings.filter(Boolean));
   return {
     roomId: order.roomId || '',

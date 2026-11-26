@@ -11,6 +11,8 @@ const MIGRATIONS_FILE = path.join(DATA_DIR, 'shop-migrations.json');
 // เลขลำดับออเดอร์เริ่มที่ 0 (ตัวแรกที่ออกคือ 0001)
 const ORDER_NUMBER_START = 0;
 
+const money = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
 const DEFAULT_PRODUCTS = [
   {
     id: 'api-key',
@@ -302,10 +304,40 @@ export function setOrderAmount(roomId, amount, slipUrls = [], transfer = null, p
   const list = readOrders();
   const order = list.find((o) => o.roomId === roomId);
   if (!order) return null;
-  order.amount = amount == null ? null : Number(amount) || 0;
-  order.slipUrls = slipUrls;
-  order.transfer = transfer || null;
-  order.paidAt = new Date().toISOString();
+  const value = amount == null ? null : Number(amount) || 0;
+  const urls = (Array.isArray(slipUrls) ? slipUrls : []).filter(Boolean);
+  const now = new Date().toISOString();
+
+  // ออเดอร์คอมมิชชันจ่ายเป็น 2 งวด → amount เก็บ "ยอดรวมที่จ่ายแล้ว" (ใช้ทำสรุปยอด)
+  // lastAmount/payments เก็บยอดของสลิปใบล่าสุด/ประวัติทุกใบ
+  const isDeposit = Number(order.depositPercent) > 0 && Boolean(priceInfo.stage);
+  if (isDeposit) {
+    const paidBefore = Number(order.amount) || 0;
+    order.lastAmount = value;
+    order.amount = money(paidBefore + (value || 0));
+    order.slipUrls = [...(Array.isArray(order.slipUrls) ? order.slipUrls : []), ...urls];
+    order.transfer = transfer || null;
+    order.paidAt = now;
+    order.payments = Array.isArray(order.payments) ? order.payments : [];
+    order.payments.push({
+      stage: priceInfo.stage,
+      amount: value,
+      expected: priceInfo.expected == null ? null : Number(priceInfo.expected) || 0,
+      match: priceInfo.priceMatch ?? null,
+      slipUrl: urls[0] || null,
+      transfer: transfer || null,
+      paidAt: now,
+    });
+    if (priceInfo.stage === 'deposit' && priceInfo.priceMatch === true) order.depositPaid = true;
+    if (priceInfo.stage === 'balance' && priceInfo.priceMatch === true) order.balancePaid = true;
+  } else {
+    order.amount = value;
+    order.lastAmount = value;
+    order.slipUrls = urls;
+    order.transfer = transfer || null;
+    order.paidAt = now;
+  }
+
   if (priceInfo.unitPrice !== undefined) {
     order.unitPrice = priceInfo.unitPrice == null ? null : Number(priceInfo.unitPrice) || 0;
   }
@@ -318,7 +350,22 @@ export function setOrderAmount(roomId, amount, slipUrls = [], transfer = null, p
   }
   if (priceInfo.priceMatch !== undefined) order.priceMatch = priceInfo.priceMatch;
   if (priceInfo.expectedSource !== undefined) order.expectedSource = priceInfo.expectedSource;
-  if (priceInfo.slipWarnings !== undefined) order.slipWarnings = priceInfo.slipWarnings;
+  if (priceInfo.slipWarnings !== undefined) {
+    const old = Array.isArray(order.slipWarnings) ? order.slipWarnings.filter(Boolean) : [];
+    order.slipWarnings = [...new Set([...old, ...(priceInfo.slipWarnings || []).filter(Boolean)])];
+  }
+
+  if (Number(order.depositPercent) > 0 && Number(order.agreedPrice) > 0) {
+    const price = Number(order.agreedPrice);
+    if ((Number(order.amount) || 0) >= price - 0.01) {
+      order.fullyPaid = true;
+      order.depositPaid = true;
+      order.balancePaid = true;
+      order.expected = price;
+      order.priceMatch = true;
+      order.expectedSource = 'agreed';
+    }
+  }
   writeJson(ORDERS_FILE, list);
   return order;
 }
@@ -329,19 +376,81 @@ export function setOrderAgreedPrice(roomId, price) {
   const list = readOrders();
   const order = list.find((o) => o.roomId === roomId);
   if (!order) return null;
-  order.agreedPrice = price == null ? null : Math.max(0, Number(price) || 0);
-  if (order.agreedPrice != null) {
+  order.agreedPrice = price == null ? null : money(Math.max(0, Number(price) || 0));
+
+  const percent = Number(order.depositPercent) || 0;
+  if (order.agreedPrice != null && percent > 0) {
+    order.depositAmount = money((order.agreedPrice * percent) / 100);
+    order.balanceAmount = money(order.agreedPrice - order.depositAmount);
+    const paid = Number(order.amount) || 0;
+    const deposit = order.depositAmount;
+    if (paid >= order.agreedPrice - 0.01) {
+      order.depositPaid = true;
+      order.balancePaid = true;
+      order.fullyPaid = true;
+      order.expected = order.agreedPrice;
+      order.priceMatch = true;
+    } else if (paid >= deposit - 0.01) {
+      order.depositPaid = true;
+      order.balancePaid = false;
+      order.fullyPaid = false;
+      order.expected = money(price - paid);
+      order.priceMatch = Math.abs(paid - deposit) < 0.01;
+    } else {
+      order.depositPaid = false;
+      order.balancePaid = false;
+      order.fullyPaid = false;
+      order.expected = deposit;
+      order.priceMatch = paid > 0 ? Math.abs(paid - deposit) < 0.01 : null;
+    }
+    order.expectedSource = 'agreed';
+  } else if (order.agreedPrice != null) {
     order.expected = order.agreedPrice;
     order.expectedSource = 'agreed';
     order.priceMatch =
       order.amount == null ? null : Math.abs(Number(order.amount) - order.agreedPrice) < 0.01;
+    order.fullyPaid = false;
   } else {
     order.expected = null;
     order.expectedSource = null;
     order.priceMatch = null;
+    order.depositAmount = null;
+    order.balanceAmount = null;
+    order.depositPaid = false;
+    order.balancePaid = false;
+    order.fullyPaid = false;
   }
   writeJson(ORDERS_FILE, list);
   return order;
+}
+
+// แยกยอดมัดจำ/คงเหลือของออเดอร์คอมมิชชัน (บริการอื่นจะได้ null)
+export function depositParts(order = {}) {
+  const percent = Number(order.depositPercent) || 0;
+  const price = Number(order.agreedPrice);
+  if (!(percent > 0) || !(price > 0)) return null;
+  const deposit = Number(order.depositAmount) || money((price * percent) / 100);
+  return { percent, deposit, balance: money(price - deposit) };
+}
+
+// งวดที่ลูกค้าต้องจ่าย "ตอนนี้" — ใช้ทั้งตอนแนบสลิปและตอนโชว์ราคาในห้อง
+// จ่ายเต็มรอบเดียวได้: ถ้ายอดรวม (จ่ายแล้ว + สลิปนี้) ครบราคา → ถือว่าชำระครบ
+export function paymentStage(order = {}, incomingAmount = null) {
+  const parts = depositParts(order);
+  if (!parts) return null;
+  const price = Number(order.agreedPrice);
+  const paid = Number(order.amount) || 0;
+  const value = incomingAmount == null ? null : Number(incomingAmount) || 0;
+
+  if (paid >= price - 0.01) return { key: 'complete', label: 'ชำระครบแล้ว', expected: price };
+  if (paid >= parts.deposit - 0.01) {
+    return { key: 'balance', label: `งวดที่เหลือ ${parts.percent}%`, expected: money(price - paid) };
+  }
+  // ยังไม่จ่ายมัดจำ แต่โอนครบราคาในสลิปเดียว → ถือว่าชำระครบ
+  if (value != null && paid + value >= price - 0.01) {
+    return { key: 'full', label: 'จ่ายเต็มรอบเดียว', expected: money(price - paid) };
+  }
+  return { key: 'deposit', label: `มัดจำ ${parts.percent}%`, expected: parts.deposit };
 }
 
 // ---------- สลิปที่เคยใช้ (กันสลิปซ้ำ/สลิปเก่า) ----------

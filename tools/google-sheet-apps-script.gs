@@ -284,6 +284,31 @@ function beautifySheet() {
     ]);
   }
 
+  // ระบายสีจริงลงแถวตัวอย่าง (คนเปิดชีตเห็นสีทันที ไม่ต้องรอ conditional rule)
+  function paintSample(sheet) {
+    const last = sheet.getLastRow();
+    if (last < 2) return;
+    const palette = [
+      { test: /ไม่ตรง/, row: '#f4cccc', cell: '#ea9999', name: '⚠️ ไม่ตรง' },
+      { test: /รอตรวจ/, row: '#fce5cd', cell: '#f9cb9c', name: '🔎 รอตรวจ' },
+      { test: /ยังไม่แนบ/, row: '#fff2cc', cell: '#ffe599', name: '🕓 ยังไม่แนบสลิป' },
+      { test: /ตรง/, row: '#d9ead3', cell: '#b6d7a8', name: '✅ ตรง' },
+    ];
+    const statuses = sheet.getRange(2, 15, last - 1, 1).getValues().flat();
+    statuses.forEach((value, i) => {
+      const text = String(value || '');
+      if (!text) return;
+      const hit = palette.find((p) => p.test.test(text));
+      if (!hit) return;
+      const r = i + 2;
+      sheet.getRange(r, 1, 1, ORDER_HEADERS.length).setBackground(hit.row);
+      sheet.getRange(r, 15, 1, 2).setBackground(hit.cell).setFontWeight('bold');
+      sheet.getRange(r, 15, 1, 2).setNote(hit.name);
+      const no = String(i + 1).padStart(4, '0');
+      sheet.getRange(r, 1, 1, 2).setValues([['SAMPLE-' + no, no]]);
+    });
+  }
+
   const orderWidths = [130, 60, 100, 90, 90, 120, 130, 240, 150, 80, 90, 90, 90, 90, 110, 80, 240, 150, 260, 70, 150];
   ['ตัวอย่าง', TAB_ORDERS].forEach((name) => {
     const sheet = ss.getSheetByName(name);
@@ -297,6 +322,7 @@ function beautifySheet() {
     sheet.getRange(2, 17, n, 3).setWrap(true);
     sheet.getRange(2, 10, n, 5).setNumberFormat('#,##0.00');
     colorRules(sheet, ORDER_HEADERS.length);
+    if (name === 'ตัวอย่าง') paintSample(sheet);
   });
 
   const tabColors = { day: '#6fa8dc', week: '#8e7cc3', month: '#0b5394' };

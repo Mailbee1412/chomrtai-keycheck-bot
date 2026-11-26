@@ -234,6 +234,12 @@ function createSampleSheet() {
     ['SAMPLE-0002', '0002', '2026-11-26', '19:50', '19:52', '1234567890', 'ลูกค้าตัวอย่าง',
       '🍷 ◦ Cosmo [ โมเดลรวม Gemini / Claude ]', 'api-key-cosmo', 200, 79, 100, 158, 79,
       '⚠️ ไม่ตรง', 'ไม่ตรง', 'ตัวอย่าง: จ่ายไม่ตรงที่ควรได้', 'SAMPLE-REF-002', '', 'ไม่', '2026-11-26T12:10:00.000Z'],
+    ['SAMPLE-0003', '0003', '2026-11-26', '20:05', '', '1234567890', 'ลูกค้าตัวอย่าง',
+      '🥃 ◦ Long Island [ Gemini Pro / Flash ]', 'api-key-long-island', 100, 49, 100, 49, '',
+      '🕓 ยังไม่แนบสลิป', '', '', '', '', 'ไม่', '2026-11-26T12:15:00.000Z'],
+    ['SAMPLE-0004', '0004', '2026-11-26', '20:18', '20:21', '1234567890', 'ลูกค้าตัวอย่าง',
+      '🍸 ◦ Angel Shot [ Claude ]', 'api-key-angel-shot', 100, 139, 100, 139, 139,
+      '🔎 รอตรวจ', '', 'ตัวอย่าง: รอทีมตรวจสลิป', 'SAMPLE-REF-004', '', 'ไม่', '2026-11-26T12:20:00.000Z'],
   ];
 
   const lastCol = headers.length;
@@ -363,4 +369,11 @@ function removeMidnightKiss() {
   const formatted = beautifySheet();
   Logger.log('removeMidnightKiss removed=' + removed + ' format=' + formatted);
   return 'ลบ Midnight Kiss ' + removed + ' แถว / ' + formatted;
+}
+
+// สร้างตัวอย่างครบ 4 สี แล้วจัดรูปแบบให้ในขั้นตอนเดียว
+function refreshSample() {
+  const made = createSampleSheet();
+  beautifySheet();
+  return made + ' / beautified';
 }
